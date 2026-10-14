@@ -16,6 +16,16 @@ import type {
   ToolCall,
   ToolStatus,
 } from "./types";
+import {
+  EXTRA_COMMANDS,
+  formatAgents,
+  formatHelp,
+  formatInstructions,
+  formatRewindPoints,
+  formatSchedules,
+  formatTasks,
+  formatVersion,
+} from "./extras";
 
 /* ---------------------------------------------------------------------------
    Talks to the Spring Boot backend in ../copilot-dashboard.
@@ -61,6 +71,7 @@ interface Envelope {
   request?: Record<string, unknown>;
   /* dashboard.command_result, dashboard.plan_review_*, external turns. */
   external?: boolean;
+  turnId?: string;
   kind?: string;
   text?: string;
   markdown?: boolean;
@@ -294,7 +305,13 @@ interface Turn {
   settled: boolean;
   /** Set when this turn is a runtime command; its events carry the same id. */
   requestId?: string;
+  /** Set when the runtime started this turn itself (a scheduled prompt). */
+  externalId?: string;
 }
+
+/* How far before the stream opened a scheduled turn may have started and
+   still be shown. Older ones arrive only in the reconnect replay. */
+const REPLAY_SLACK_MS = 5_000;
 
 export function createCopilotClient(options: { baseUrl?: string } = {}): ChatClient {
   const base = options.baseUrl ?? DEFAULT_BASE;
@@ -311,6 +328,10 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
   /* Plan reviews ride on the permission card; this remembers what "approve"
      should pick for each one. */
   const planActions = new Map<string, string | null>();
+  type ExternalHandler = (prompt: string, cancel: () => void) => ((d: Delta) => void) | null;
+  let externalHandler: ExternalHandler | null = null;
+  const seenExternal = new Set<string>();
+  let streamOpenedAt = 0;
   let configLoad: Promise<ClientSettings> | null = null;
   let disposed = false;
 
@@ -393,6 +414,7 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
     closeStream();
     const es = new EventSource(`${sessionsUrl}/${id}/events`);
     source = es;
+    streamOpenedAt = Date.now();
 
     es.addEventListener("copilot", (raw) => {
       try {
@@ -441,14 +463,48 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
       /* Echo of our own prompt. The UI rendered it optimistically before the
          round trip, so re-adding it would show the question twice. */
       case "dashboard.user_message":
-      case "dashboard.turn_start":
         return;
 
+      /* Our own turns were rendered before the round trip. A turn the runtime
+         started by itself — a prompt scheduled with /every or /after — has
+         nothing on screen yet, so it is handed to the UI to show. The replay
+         on (re)connect repeats old ones: each is shown once, and only if it
+         began after this page started listening. */
+      case "dashboard.turn_start": {
+        const turnId = str(event.turnId);
+        if (!event.external || !turnId || seenExternal.has(turnId)) return;
+        seenExternal.add(turnId);
+        if (turn || !externalHandler) return;
+        if ((event.timestamp ?? Date.now()) < streamOpenedAt - REPLAY_SLACK_MS) return;
+        const own: Turn = { onDelta: () => undefined, buf: "", segStart: 0, reasoning: "", settled: false, externalId: turnId };
+        const cancel = () => {
+          if (turn === own) {
+            own.settled = true;
+            turn = null;
+          }
+          if (sessionId) {
+            void request<void>(`${sessionsUrl}/${sessionId}/abort`, { method: "POST" }).catch(
+              () => undefined,
+            );
+          }
+        };
+        const onDelta = externalHandler(str(event.content) || "Scheduled prompt", cancel);
+        if (!onDelta) return;
+        own.onDelta = onDelta;
+        turn = own;
+        emit({ type: "notice", message: "Started by a scheduled prompt." });
+        return;
+      }
+
       /* A command's turn ends only on the turn_end carrying its own request
-         id. A chat turn ignores turn_ends that belong to a command, or to a
-         scheduled prompt the runtime started by itself. */
+         id, a scheduled turn only on its own turn id. A chat turn ignores
+         both kinds. */
       case "dashboard.turn_end":
-        if (event.external || (event.requestId ?? null) !== (turn?.requestId ?? null)) return;
+        if (event.external) {
+          if (turn?.externalId && turn.externalId === str(event.turnId)) finish({ type: "done" });
+          return;
+        }
+        if ((event.requestId ?? null) !== (turn?.requestId ?? null)) return;
         finish({ type: "done" });
         return;
 
@@ -685,9 +741,68 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
     const key = sessionId;
     if (commandCache && commandCache.session === key) return commandCache.list;
     const url = key ? `${sessionsUrl}/${key}/commands` : `${base}/commands`;
-    const list = listOf(await request<unknown>(url), parseRuntimeCommand);
+    const runtime = listOf(await request<unknown>(url), parseRuntimeCommand);
+    const extras = new Set(EXTRA_COMMANDS.map((c) => c.name));
+    const list = [...runtime.filter((c) => !extras.has(c.name)), ...EXTRA_COMMANDS];
     commandCache = { session: key, list };
     return list;
+  }
+
+  /* The CLI commands served by Cortex's own endpoints (see extras.ts). Each
+     answers with markdown for the reply bubble; a failure throws, and the
+     caller shows it as the reply's error. */
+  async function runExtra(id: string, name: string, input: string): Promise<string> {
+    const at = `${sessionsUrl}/${id}`;
+    const post = (url: string, body?: unknown) =>
+      request<unknown>(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    const [verb = "", ...rest] = input.split(/\s+/).filter(Boolean);
+    const arg = rest.join(" ").replace(/^#/, "");
+    switch (name) {
+      case "agent": {
+        if (!input) return formatAgents(await request<unknown>(`${at}/agents`));
+        const target = /^(default|none)$/i.test(input) ? null : input;
+        const after = rec(await post(`${at}/agent`, { name: target }));
+        return `Switched to the **${str(after.current) ?? "default"}** agent.`;
+      }
+      case "rewind": {
+        const listing = await request<unknown>(`${at}/rewind`);
+        if (!input) return formatRewindPoints(listing);
+        const points = listOf(rec(listing).points, (p) => rec(p));
+        const n = Number(input);
+        const eventId = Number.isInteger(n) ? str(points[n - 1]?.eventId) : input;
+        if (!eventId) throw new Error(`There is no rewind point ${input}. Run /rewind to list them.`);
+        const done = rec(await post(`${at}/rewind`, { eventId }));
+        return (
+          `Rewound: the agent forgot ${num(done.eventsRemoved) ?? 0} events, from that prompt on. ` +
+          "The transcript above is kept for reference."
+        );
+      }
+      case "tasks": {
+        if (verb.toLowerCase() !== "cancel" || !arg) {
+          return formatTasks(await request<unknown>(`${at}/tasks`));
+        }
+        const r = rec(await post(`${at}/tasks/${encodeURIComponent(arg)}/cancel`));
+        return r.cancelled === true ? `Cancelled task \`${arg}\`.` : `Task \`${arg}\` was not running.`;
+      }
+      case "schedules": {
+        if (verb.toLowerCase() !== "stop" || !arg) {
+          return formatSchedules(await request<unknown>(`${at}/schedules`));
+        }
+        if (!/^\d+$/.test(arg)) throw new Error("Give the schedule's number, e.g. /schedules stop 3.");
+        await post(`${at}/schedules/${arg}/stop`);
+        return `Stopped scheduled prompt #${arg}.`;
+      }
+      case "instructions":
+        return formatInstructions(await request<unknown>(`${at}/instructions`));
+      case "version":
+        return formatVersion(await request<unknown>(`${base}/version`));
+      default:
+        return formatHelp(await loadCommands());
+    }
   }
 
   /* The backend answers 428 for anything that hands the agent more autonomy
@@ -873,6 +988,10 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
       }
     },
 
+    onExternalTurn(cb) {
+      externalHandler = cb;
+    },
+
     send(opts: SendOptions, onDelta) {
       turn = { onDelta, buf: "", segStart: 0, reasoning: "", settled: false };
       const mine = turn;
@@ -886,6 +1005,15 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
           /* "/name input" naming one of the runtime's commands runs it; any
              other text, slash or not, is a message for the agent. */
           const name = slash?.[1];
+          const extra = name ? EXTRA_COMMANDS.find((c) => c.name === name) : undefined;
+          if (extra) {
+            const reply = await runExtra(id, extra.name, slash?.[2]?.trim() ?? "");
+            if (cancelled || turn !== mine) return;
+            mine.buf += reply;
+            emit({ type: "text", value: reply });
+            finish({ type: "done" });
+            return;
+          }
           const command = name
             ? (await loadCommands().catch((): RuntimeCommand[] => [])).find(
                 (c) => c.name === name || c.aliases.includes(name),

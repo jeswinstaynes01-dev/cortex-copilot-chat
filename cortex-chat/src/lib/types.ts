@@ -298,6 +298,14 @@ export interface ChatClient {
   /** The runtime's own slash commands for the current (or a new) session. */
   commands(): Promise<RuntimeCommand[]>;
   /**
+   * Called when the runtime starts a turn by itself — a prompt scheduled with
+   * /every or /after firing. Return the handler for that reply's deltas, or
+   * null to leave it unshown; `cancel` stops it like the Stop button.
+   */
+  onExternalTurn(
+    cb: ((prompt: string, cancel: () => void) => ((d: Delta) => void) | null) | null,
+  ): void;
+  /**
    * Starts a reply. Calls `onDelta` repeatedly until it emits `done` or
    * `error`. Returns a function that cancels the reply early. Text naming a
    * runtime command ("/context", "/every 5m check the build") runs that

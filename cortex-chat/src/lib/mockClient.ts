@@ -384,6 +384,9 @@ export function createMockClient(): ChatClient {
       return [];
     },
 
+    /* Nothing is ever scheduled in the demo. */
+    onExternalTurn() {},
+
     send({ text }: SendOptions, onDelta: (d: Delta) => void) {
       let cancelled = false;
       const timers: number[] = [];

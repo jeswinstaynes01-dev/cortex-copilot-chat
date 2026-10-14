@@ -122,38 +122,15 @@ export function useChat(client: ChatClient) {
     }
   }, [activeId, patch]);
 
-  const send = useCallback(
-    (text: string) => {
-      const body = text.trim();
-      if (!body || busy) return;
-
-      let id = activeId;
-      const history = active?.messages ?? [];
-
-      if (!id) {
-        id = uid();
-        const title = body.length > 54 ? `${body.slice(0, 54)}…` : body;
-        setConversations((prev) => [
-          { id: id as string, title, messages: [], updatedAt: Date.now() },
-          ...prev,
-        ]);
-        setActiveId(id);
-      }
-
-      const convId = id;
-      /* `selectChat` would do this too, but the ref must be current before the
-         session id can land, and `setActiveId` has not re-rendered yet. */
-      activeIdRef.current = convId;
-      const reply = { ...emptyMessage("assistant"), streaming: true };
-      patch(convId, (msgs) => [...msgs, emptyMessage("user", body), reply]);
-      setBusy(true);
-      setDetached(false);
-
+  /* The reducer for one streaming reply, shared by the replies the user asks
+     for and the ones a scheduled prompt starts on its own. */
+  const handlerFor = useCallback(
+    (convId: string, replyId: string) => {
       /* Narrows a whole-list update down to the one streaming message. Every
          branch below is a pure transform of that message, which keeps the
          reducer readable and makes each event independently testable. */
       const onReply = (fn: (m: Message) => Message) =>
-        patch(convId, (msgs) => msgs.map((m) => (m.id === reply.id ? fn(m) : m)));
+        patch(convId, (msgs) => msgs.map((m) => (m.id === replyId ? fn(m) : m)));
 
       const onDelta = (d: Delta) => {
         switch (d.type) {
@@ -226,9 +203,59 @@ export function useChat(client: ChatClient) {
         }
       };
 
+      return onDelta;
+    },
+    [patch],
+  );
+
+  /* A prompt scheduled with /every or /after firing by itself. It lands in
+     the open chat as a prompt and a streaming reply, like one the user sent,
+     but never on top of a reply that is already streaming. */
+  useEffect(() => {
+    client.onExternalTurn((prompt, cancel) => {
+      const convId = activeIdRef.current;
+      if (!convId || abortRef.current) return null;
+      const reply = { ...emptyMessage("assistant"), streaming: true };
+      patch(convId, (msgs) => [...msgs, emptyMessage("user", prompt), reply]);
+      abortRef.current = cancel;
+      setBusy(true);
+      return handlerFor(convId, reply.id);
+    });
+    return () => client.onExternalTurn(null);
+  }, [client, patch, handlerFor]);
+
+  const send = useCallback(
+    (text: string) => {
+      const body = text.trim();
+      if (!body || busy) return;
+
+      let id = activeId;
+      const history = active?.messages ?? [];
+
+      if (!id) {
+        id = uid();
+        const title = body.length > 54 ? `${body.slice(0, 54)}…` : body;
+        setConversations((prev) => [
+          { id: id as string, title, messages: [], updatedAt: Date.now() },
+          ...prev,
+        ]);
+        setActiveId(id);
+      }
+
+      const convId = id;
+      /* `selectChat` would do this too, but the ref must be current before the
+         session id can land, and `setActiveId` has not re-rendered yet. */
+      activeIdRef.current = convId;
+      const reply = { ...emptyMessage("assistant"), streaming: true };
+      patch(convId, (msgs) => [...msgs, emptyMessage("user", body), reply]);
+      setBusy(true);
+      setDetached(false);
+
+      const onDelta = handlerFor(convId, reply.id);
+
       abortRef.current = client.send({ text: body, history }, onDelta);
     },
-    [active, activeId, busy, client, patch],
+    [active, activeId, busy, client, patch, handlerFor],
   );
 
   const newChat = useCallback(() => {

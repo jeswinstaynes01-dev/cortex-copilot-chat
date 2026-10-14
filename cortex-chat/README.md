@@ -1173,6 +1173,33 @@ approve/reject card as a permission.
 Runtime commands are disabled while a reply streams, because `useChat` sends
 one thing at a time.
 
+#### Screens the runtime doesn't publish
+
+Some CLI screens aren't in the runtime's catalog. Cortex adds them from
+`extras.ts`, each backed by a REST endpoint, and answers in the bubble without
+messaging the model. They win a name clash with a runtime command, because
+these are the ones this UI implements:
+
+| Command | Does |
+| --- | --- |
+| `/agent [name\|default]` | list custom agents, or switch (refused while busy) |
+| `/rewind [n]` | list rewind points, or trim the agent's memory back to point *n*; the transcript stays on screen |
+| `/tasks [cancel <id>]` | list background tasks, or cancel one |
+| `/schedules [stop <n>]` | list `/every` and `/after` prompts, or stop one |
+| `/instructions` | the instruction files loaded into the session |
+| `/version` | app, SDK, CLI and Java versions |
+| `/help` | Cortex's commands, the runtime's, skills and session tools |
+
+#### Scheduled turns
+
+A prompt fired by `/every` or `/after` starts a turn this tab never asked for.
+The backend marks its `dashboard.turn_start` `external`, with a `turnId` and
+the prompt; `onExternalTurn` draws the prompt and a streaming reply in the open
+chat, and only the `turn_end` with the same `turnId` finishes it. Each turn is
+drawn once, and events from before the stream opened (a replay on reconnect)
+are skipped. If a reply is already streaming, the scheduled one isn't drawn —
+`useChat` shows one reply at a time.
+
 ### 5.10 The quota — four honest shapes
 
 The card used to read `31k / 25k this month` over a full bar. Both numbers
@@ -1338,6 +1365,8 @@ regression is cheap to catch and easy to miss by eye:
 | `highlight.test.ts` | each language, unterminated input, header labels |
 | `markdown.test.tsx` | fences rendered with `react-dom/server`: header, Copy, tokens, escaping, half-streamed, CRLF |
 | `transcript.test.ts` | the Markdown export, `slug`, and `copyText` with no clipboard |
+| `runtimeCommands.test.ts` | runtime commands merged into the palette, disabled while busy, `describeCommandResult`, and `/help` naming exactly Cortex's commands |
+| `extras.test.ts` | the extras' formatters; `/version` and `/schedules stop` routing against a stubbed `fetch`; a scheduled turn drawn once, streamed, and ended by its own `turn_end` |
 
 Vitest is a devDependency only. `tsconfig.test.json` is a third project in
 `tsc -b`, so `npm run build` type-checks the tests too, while

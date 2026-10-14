@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CommandContext } from "./commands";
 import { buildCommands } from "./commands";
 import { describeCommandResult } from "./copilotClient";
+import { NATIVE_COMMAND_NAMES } from "./extras";
 import type { RuntimeCommand } from "./types";
 
 const runtime = (over: Partial<RuntimeCommand>): RuntimeCommand => ({
@@ -86,6 +87,10 @@ describe("runtime commands in the palette", () => {
     expect(busy.find((c) => c.name === "context")!.disabled).toMatch(/Wait/);
     const none = buildCommands(context({ runtimeCommands: [runtime({})] }));
     expect(none.some((c) => c.name === "context")).toBe(false);
+  });
+
+  it("/help names exactly Cortex's own commands", () => {
+    expect(buildCommands(context()).map((c) => c.name)).toEqual(NATIVE_COMMAND_NAMES);
   });
 });
 
