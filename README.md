@@ -111,8 +111,8 @@ and no model calls.
 
 | What | Command | Folder |
 |---|---|---|
-| 28 backend unit tests (JUnit 5 + Mockito; no CLI, network or sign-in) | `mvn verify` | `copilot-dashboard/backend` |
-| 94 UI unit tests (Vitest) | `npm test` | `cortex-chat` |
+| 49 backend unit tests (JUnit 5 + Mockito; no CLI, network or sign-in) | `mvn verify` | `copilot-dashboard/backend` |
+| 108 UI unit tests (Vitest) | `npm test` | `cortex-chat` |
 | Lint, type-check and production build | `npm run lint` and `npm run build` | `cortex-chat` |
 | 23-step browser harness: 31 screenshots, fails on any console error, layout overflow or failed assertion | `npm run dev`, then `node shot.mjs` | `cortex-chat` |
 
