@@ -1,0 +1,314 @@
+/* ==========================================================================
+   BASE — reset, typography, focus, scrollbars, shared primitives.
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* The UA stylesheet's `[hidden] { display: none }` loses to ANY author
+   `display` rule, regardless of specificity. Anything here that sets
+   `display: flex` and also toggles `hidden` would otherwise never hide. */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  background: var(--cloud-2);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+svg {
+  display: block;
+  flex: none;
+}
+
+/* ---- Focus -------------------------------------------------------------
+   :focus-visible fires only when the browser thinks a ring is warranted —
+   keyboard navigation, not a mouse click. Keyboard users get the ring,
+   mouse users don't, and nobody has to choose between the two.           */
+:where(a, button, input, textarea, [tabindex]):focus {
+  outline: none;
+}
+
+:where(a, button, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-deep);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* ---- Scrollbars --------------------------------------------------------- */
+.scroller {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--tint-400) transparent;
+}
+
+.scroller::-webkit-scrollbar {
+  width: 10px;
+}
+
+.scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroller::-webkit-scrollbar-thumb {
+  background: var(--tint-300);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-pill);
+}
+
+.scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--tint-400);
+  background-clip: content-box;
+}
+
+/* ---- Screen-reader-only -------------------------------------------------
+   Visually gone, still announced. `clip-path: inset(50%)` collapses the box
+   to nothing without `display: none`, which would remove it from the
+   accessibility tree entirely.                                            */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+   SHARED PRIMITIVES
+   ========================================================================== */
+
+/* ---- Ripple ------------------------------------------------------------
+   A span injected at the click point, scaled up and faded out, then removed.
+   `position: relative` + `overflow: hidden` on the host clips it to the
+   button's own rounded shape.                                             */
+.ripple-host {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  opacity: 0.45;
+  background: currentColor;
+  pointer-events: none;
+  animation: ripple 560ms var(--ease-out) forwards;
+}
+
+@keyframes ripple {
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* ---- Buttons ------------------------------------------------------------ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  height: 38px;
+  border-radius: var(--r-md);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out),
+    box-shadow var(--t-mid) var(--ease-out),
+    transform var(--t-fast) var(--ease-spring);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn--dark {
+  background: var(--ink);
+  color: #fff;
+  box-shadow: var(--sh-md);
+}
+
+.btn--dark:hover {
+  background: #2a2122;
+  box-shadow: var(--sh-lg);
+}
+
+.btn--ghost {
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--sh-sm);
+}
+
+.btn--ghost:hover {
+  background: var(--tint-50);
+  border-color: var(--tint-300);
+  color: var(--accent-ink);
+}
+
+.btn--plain {
+  color: var(--ink-3);
+}
+
+.btn--plain:hover {
+  background: var(--tint-100);
+  color: var(--accent-ink);
+}
+
+/* Destructive. Deliberately an outline rather than a solid red fill: the
+   palette is already red everywhere, so a filled red button would read as the
+   house accent — the primary action — which is the opposite of the truth. */
+.btn--danger {
+  color: var(--accent-ink-strong);
+  border: 1px solid var(--tint-300);
+  background: var(--tint-50);
+}
+
+.btn--danger:hover {
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+  color: #fff;
+}
+
+/* Compact variant for buttons that sit inside a message bubble, where the
+   full 38px height would dominate the text it belongs to. */
+.btn--sm {
+  height: 32px;
+  padding: 0 11px;
+  font-size: 13px;
+  gap: 6px;
+  border-radius: var(--r-sm);
+}
+
+/* ---- Disabled ----------------------------------------------------------
+   One rule for every button type. `pointer-events: none` is what stops the
+   tooltip and the ripple firing on something that cannot be clicked, and it
+   also prevents the `:hover` rules above ever applying.                   */
+.btn:disabled,
+.iconbtn:disabled,
+.send:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+/* ---- Icon button -------------------------------------------------------- */
+.iconbtn {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  color: var(--ink-3);
+  transition: background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-spring);
+}
+
+.iconbtn:hover {
+  background: var(--tint-100);
+  color: var(--accent-ink);
+}
+
+.iconbtn:active {
+  transform: scale(0.9);
+}
+
+.iconbtn--bordered {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--sh-sm);
+}
+
+.iconbtn--bordered:hover {
+  border-color: var(--tint-300);
+}
+
+/* ---- Tooltip -----------------------------------------------------------
+   Driven by a data attribute so any element can have one without extra
+   markup. It is decorative duplication of the aria-label, so aria-hidden.  */
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  translate: -50% 4px;
+  padding: 5px 9px;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-fast) var(--ease-out),
+    translate var(--t-fast) var(--ease-out);
+  z-index: 40;
+}
+
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+  opacity: 1;
+  translate: -50% 0;
+}
+
+[data-tip-below]::after {
+  bottom: auto;
+  top: calc(100% + 8px);
+}

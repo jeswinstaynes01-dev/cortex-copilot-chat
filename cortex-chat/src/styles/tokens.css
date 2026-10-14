@@ -1,0 +1,162 @@
+/* ==========================================================================
+   TOKENS — every colour, size, shadow and easing in one place.
+   Change a value here and it changes everywhere it is used.
+   ========================================================================== */
+
+:root {
+  /* ---- Accent ------------------------------------------------------------
+     Two tiers, deliberately. The reference art uses ONE bright accent for
+     both fills and text, which only scores 3.1:1 against white — it fails
+     the WCAG AA minimum of 4.5:1 for normal text. So:
+       --accent*     bright, saturated. Fills, glows, gradients. Never small text.
+       --accent-ink  darkened. Text and icons on light surfaces. 5.33:1 on white.
+     -------------------------------------------------------------------- */
+  --accent: #e3102f;
+  --accent-hot: #f6263f;
+  --accent-deep: #9e0b24;
+  --accent-ink: #c2102e;
+  --accent-ink-strong: #8a0a20;
+
+  /* Red-rose tints. Same tonal rhythm as before, pulled off the pink side of
+     the hue and given a touch more saturation so they read as diluted rose
+     red rather than pastel pink. */
+  --tint-50: #fef6f6;
+  --tint-100: #fdeaec;
+  --tint-200: #fadbde;
+  --tint-300: #f5c2c7;
+  --tint-400: #eea2aa;
+
+  /* ---- Type --------------------------------------------------------------
+     Shell commands, file paths and raw JSON go in a monospace face so that
+     spaces and look-alike characters (l/1/I, O/0) stay distinguishable — the
+     permission card is the one place in the app where misreading a character
+     has real consequences. The stack degrades through the best native option
+     on each platform before reaching the generic keyword. */
+  --font-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", "Menlo",
+    "Consolas", monospace;
+
+  /* ---- Neutrals ---------------------------------------------------------- */
+  --ink: #121011;  --ink-2: #3d3839;
+  --ink-3: #6b6465;
+  --ink-4: #8c8586;
+  --ink-5: #b6afb0;
+
+  --surface: #fdfdfd;
+  --surface-2: #fbf8f8;
+  --rail: rgba(252, 246, 246, 0.72);
+  --line: rgba(18, 16, 17, 0.08);
+  --line-2: rgba(18, 16, 17, 0.14);
+
+  /* ---- Cloud backdrop ---------------------------------------------------- */
+  --cloud-1: #dbb0b4;
+  --cloud-2: #c2848c;
+  --cloud-3: #a85f6a;
+  --cloud-4: #ecd0d2;
+
+  /* ---- Radii ------------------------------------------------------------- */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-2xl: 26px;
+  --r-pill: 999px;
+
+  /* ---- Shadows ----------------------------------------------------------
+     Tinted with the backdrop's hue rather than pure black. A grey shadow on a
+     rose page looks like dirt; a rose-tinted one looks like light.           */
+  --sh-sm: 0 1px 2px rgba(96, 18, 34, 0.06), 0 1px 1px rgba(96, 18, 34, 0.04);
+  --sh-md: 0 4px 12px -2px rgba(96, 18, 34, 0.1), 0 2px 4px rgba(96, 18, 34, 0.06);
+  --sh-lg: 0 16px 32px -12px rgba(96, 18, 34, 0.18), 0 4px 10px rgba(96, 18, 34, 0.07);
+  --sh-window: 0 48px 100px -36px rgba(80, 14, 28, 0.52),
+               0 8px 24px -8px rgba(80, 14, 28, 0.18),
+               inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --sh-accent: 0 6px 18px -4px rgba(206, 14, 44, 0.42);
+
+  /* ---- Motion -----------------------------------------------------------
+     --ease-out   decelerating. Things arriving.
+     --ease-spring overshoots past the target then settles. Things reacting
+                   to a click. The 1.56 in slot three is what pushes past 1.   */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --t-fast: 140ms;
+  --t-mid: 240ms;
+  --t-slow: 420ms;
+
+  /* The orb's wobble. `.orb__body` draws the blob and `.orb__inner` clips the
+     caustics to it — they run the SAME keyframes and must stay on identical
+     timing, or the arcs get trimmed against a silhouette the body is no
+     longer in. One token means the two can never drift apart. */
+  --orb-morph: 11s;
+
+  /* ---- Metrics ----------------------------------------------------------- */
+  --rail-w: 276px;
+  --content-max: 760px;
+
+  /* ---- Code blocks --------------------------------------------------------
+     A dark well, the same family as the permission card's command, because
+     a listing reads better light-on-dark and stands apart from the prose
+     around it. The token colours are borrowed from the accent — rose for
+     keywords, warm gold for strings, a lavender for numbers — and every one,
+     comments included, clears 6:1 on both the body and the header, so none
+     of them is decoration you have to squint at. */
+  --code-bg: #1d1517;
+  --code-head: #281c1f;
+  --code-line: rgba(255, 255, 255, 0.07);
+  --code-ink: #f6e7e9;
+  --code-muted: #cdb8bc;
+  --code-comment: #ab9ca1;
+  --code-string: #f6c177;
+  --code-number: #c4a7e7;
+  --code-keyword: #ff8fa3;
+
+  color-scheme: light;
+}
+
+/* ---- Slow display / no GPU ----------------------------------------------
+   Set by ambient.ts when measured frame delivery falls below ~45fps. On this
+   VM that is 33fps, because the remote display adapter caps at 32Hz and Chrome
+   is rasterising on the CPU through SwiftShader.
+
+   A transition's duration is a promise about how many frames the user will see
+   it in, and that promise is only keepable at 60Hz. At 32Hz a frame is 31ms,
+   so the defaults land like this:
+
+       --t-fast  140ms  ->  4.5 frames
+       --t-mid   240ms  ->  7.7 frames
+       --t-slow  420ms  -> 13.4 frames
+
+   Few enough to read as a sequence of discrete steps rather than as motion.
+   The eye registers the stepping as the interface being slow to respond, even
+   though it began responding on the very first frame — which is exactly the
+   complaint that led here.
+
+   Shortening them does not make anything move faster in the sense of skipping
+   ahead; it removes intermediate frames that were never going to be drawn
+   smoothly anyway. Roughly three frames each, which is enough to read as a
+   transition and few enough that none of them look like a stutter. Nothing is
+   taken to zero: an instant jump loses the connection between cause and
+   effect, and that is a real loss, not a decorative one. */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-perf="low"] {
+    --t-fast: 90ms;
+    --t-mid: 150ms;
+    --t-slow: 240ms;
+  }
+}
+
+/* Honour the OS "reduce motion" switch. Anything decorative stops; anything
+   that communicates state keeps a short fade so the UI never feels broken.
+   See responsive.css for what `reduce` does and does not switch off. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 1ms;
+    --t-mid: 1ms;
+    --t-slow: 1ms;
+
+    /* Slower than the default, but still clearly happening. Overriding the
+       token rather than the two `animation-duration` declarations is what
+       keeps the blob and its clip wrapper in lockstep. */
+    --orb-morph: 15s;
+  }
+}

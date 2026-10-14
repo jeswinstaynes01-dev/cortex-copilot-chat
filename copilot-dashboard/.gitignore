@@ -1,0 +1,14 @@
+# Build output
+target/
+dist/
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Logs / local env
+*.log
+.env
+.env.local

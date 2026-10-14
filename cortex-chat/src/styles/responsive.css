@@ -1,0 +1,242 @@
+/* ==========================================================================
+   RESPONSIVE — three breakpoints, largest first.
+   1100px  sidebar becomes a slide-in drawer
+    760px  suggestion cards become a swipeable row
+    560px  window goes edge-to-edge, non-essential controls drop out
+   ========================================================================== */
+
+/* ---- Always-visible sidebar: hide the drawer-only controls --------------- */
+.rail__close,
+.topbar__menu {
+  display: none;
+}
+
+/* ========================================================================== */
+@media (max-width: 1100px) {
+  .window {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar__menu {
+    display: inline-grid;
+  }
+
+  .rail__close {
+    display: inline-grid;
+  }
+
+  .rail {
+    /* Absolute, not fixed. `.window` sets `transform: translateZ(0)`, which
+       makes it the containing block for fixed-position descendants — so
+       `position: fixed` would silently resolve against the window rather than
+       the viewport. Saying `absolute` makes that explicit, and lets the
+       window's `overflow: hidden` clip the parked drawer cleanly. */
+    position: absolute;
+    z-index: 20;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(300px, 86vw);
+    padding-top: 16px;
+    /* Near-opaque instead of translucent + backdrop-filter. The drawer slides,
+       and a backdrop-filter on a moving element forces the browser to re-sample
+       and re-blur whatever is behind it on every frame of the slide — the most
+       expensive possible moment to ask for it. At 0.97 the fill reads as the
+       same frosted panel without any of that. */
+    background: rgba(253, 247, 247, 0.97);
+    border-right: 1px solid var(--line);
+    box-shadow: 0 0 60px rgba(80, 14, 28, 0.3);
+    /* Parked just off the left edge. Animating `transform` keeps the drawer on
+       the compositor — animating `left` would force a layout on every frame. */
+    transform: translateX(-102%);
+    transition: transform var(--t-slow) var(--ease-out);
+  }
+
+  .rail--open {
+    transform: translateX(0);
+  }
+
+  .main {
+    margin: 10px;
+  }
+}
+
+/* ========================================================================== */
+@media (max-width: 760px) {
+  :root {
+    --content-max: 100%;
+  }
+
+  .suggestions {
+    /* A swipeable row reads better than three stacked cards on a phone. */
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+    /* Bleed to the pane edges so the row looks scrollable rather than clipped. */
+    margin-inline: calc(clamp(14px, 3vw, 28px) * -1);
+    padding-inline: clamp(14px, 3vw, 28px);
+  }
+
+  .suggestions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .card {
+    flex: 0 0 auto;
+    width: 212px;
+    scroll-snap-align: start;
+  }
+
+  .welcome {
+    gap: 2px;
+  }
+
+  .msg--user .msg__bubble {
+    max-width: 88%;
+  }
+}
+
+/* ========================================================================== */
+@media (max-width: 560px) {
+  .app {
+    padding: 0;
+  }
+
+  .window {
+    border-radius: 0;
+    border: 0;
+  }
+
+  .main {
+    margin: 0;
+    border-radius: 0;
+    border: 0;
+  }
+
+  .topbar {
+    padding: 10px;
+    gap: 6px;
+  }
+
+  /* "Export chat" is not worth the width here. Copy transcript stays, because
+     it is a single icon, and the export is still reachable from a wider
+     window — losing it on a phone costs less than a cramped top bar. */
+  .topbar__wide {
+    display: none;
+  }
+
+  .composer-wrap {
+    padding-inline: 10px;
+  }
+
+  /* Icon-only below this width — the label is what forces the control row to
+     wrap, and the glyph plus the pressed state still read clearly. */
+  .toggle__label {
+    display: none;
+  }
+
+  .toggle {
+    padding-inline: 10px;
+  }
+
+  .suggest-wrap {
+    padding-inline: 10px;
+  }
+
+  /* Anchored to the viewport rather than to the pill. The panel is wider than
+     the pill's left offset allows, so any anchor-relative position runs off
+     one edge or the other. `position: fixed` is resolved against `.window`
+     here (its `transform: translateZ(0)` makes it the containing block for
+     fixed descendants), and at this width `.window` is flush with the screen —
+     so either way the panel lands inside the viewport. */
+  .pop__panel--model {
+    position: fixed;
+    top: 56px;
+    left: 10px;
+    right: 10px;
+    width: auto;
+    max-height: calc(100dvh - 66px);
+    transform-origin: top center;
+  }
+
+  .banner {
+    margin-inline: 10px;
+  }
+}
+
+/* ---- Short viewports ----------------------------------------------------
+   Height, not width. On a laptop in landscape the orb is the first thing
+   worth sacrificing — the greeting and composer matter more.               */
+@media (max-height: 640px) {
+  .orb {
+    width: 84px;
+  }
+
+  .welcome__greet {
+    font-size: 24px;
+  }
+
+  .welcome__ask {
+    font-size: 20px;
+  }
+}
+
+/* ---- Reduced motion -----------------------------------------------------
+   `reduce` means "do not move things across the screen" — it is a vestibular
+   safety setting, not an instruction to freeze the page. So anything that
+   travels or spins is switched off, while the orb keeps its breath and its
+   shape morph. Both happen in place: nothing crosses the screen, nothing
+   scrolls, nothing rotates. That keeps the orb the living thing the design
+   is built around without ignoring the preference.                         */
+@media (prefers-reduced-motion: reduce) {
+  /* Things that travel or rotate. */
+  .orb__ring,
+  .orb__ring2,
+  .orb__core,
+  .orb__spec,
+  .backdrop__layer,
+  .welcome__greet,
+  .toggle[aria-pressed="true"] svg {
+    animation: none !important;
+  }
+
+  /* The breath, minus the vertical lift. */
+  .orb {
+    animation: orb-breathe-still 6.5s var(--ease-in-out) infinite !important;
+  }
+
+  /* The morph is kept. Its speed comes from `--orb-morph`, which tokens.css
+     slows down under this same media query — overriding the token rather
+     than the duration keeps the body and its clip wrapper in lockstep, since
+     a mismatch would trim the caustics against the wrong silhouette. Both
+     also carry their own base border-radius, so even switching the animation
+     off entirely can never square them. */
+
+  /* Opacity only — the scale component of orb-pulse is dropped. */
+  .orb__glow {
+    animation: orb-breathe-glow 8s var(--ease-in-out) infinite !important;
+  }
+
+  .card,
+  .msg,
+  .window {
+    animation-duration: 1ms !important;
+  }
+
+  .ripple {
+    display: none;
+  }
+}
+
+@keyframes orb-breathe-glow {
+  0%,
+  100% {
+    opacity: 0.68;
+  }
+  50% {
+    opacity: 1;
+  }
+}

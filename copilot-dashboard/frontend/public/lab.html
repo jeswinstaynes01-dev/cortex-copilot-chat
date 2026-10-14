@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en" data-backdrop="embers" data-glass="mid">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Design Lab — red &amp; glass</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/lab.css" />
+  </head>
+
+  <body>
+    <!--
+      BACKDROP STACK
+      Five layers, painted back to front. Only one of the first three is ever
+      visible at a time; the switcher in the rail decides which.
+    -->
+    <div class="bg" aria-hidden="true">
+      <video class="bg__video" muted loop playsinline></video>
+      <canvas class="bg__canvas"></canvas>
+      <div class="bg__mesh"></div>
+      <div class="bg__grid"></div>
+      <div class="bg__scrim"></div>
+      <div class="bg__noise"></div>
+    </div>
+
+    <!-- ──────────────────────────── CONTROL RAIL ──────────────────────────── -->
+    <header class="rail glass">
+      <div class="brand">
+        <span class="brand__mark"></span>
+        <span class="brand__text">
+          <strong>Design Lab</strong>
+          <em>red &amp; glass</em>
+        </span>
+      </div>
+
+      <div class="rail__group">
+        <span class="label">Backdrop</span>
+        <div class="seg" role="tablist" data-seg="backdrop">
+          <button role="tab" data-value="embers" class="seg__btn is-active">Embers</button>
+          <button role="tab" data-value="mesh" class="seg__btn">Mesh</button>
+          <button role="tab" data-value="grid" class="seg__btn">Grid</button>
+          <button role="tab" data-value="video" class="seg__btn">Video</button>
+          <span class="seg__thumb" aria-hidden="true"></span>
+        </div>
+      </div>
+
+      <div class="rail__group">
+        <span class="label">Glass</span>
+        <div class="seg" role="tablist" data-seg="glass">
+          <button role="tab" data-value="etched" class="seg__btn">Etched</button>
+          <button role="tab" data-value="mid" class="seg__btn is-active">Frosted</button>
+          <button role="tab" data-value="liquid" class="seg__btn">Liquid</button>
+          <span class="seg__thumb" aria-hidden="true"></span>
+        </div>
+      </div>
+
+      <label class="file">
+        <input type="file" accept="video/*" hidden />
+        <span>Load your own video…</span>
+      </label>
+
+      <label class="switch">
+        <input type="checkbox" data-toggle="calm" />
+        <span class="switch__track"><span class="switch__knob"></span></span>
+        <span class="label">Calm mode</span>
+      </label>
+    </header>
+
+    <main class="lab">
+      <!-- ──────────────────────────── CHATBOT ──────────────────────────── -->
+      <section class="chat glass" aria-label="Chat preview">
+        <header class="chat__head">
+          <span class="dot"></span>
+          <h2>Assistant</h2>
+          <span class="chip chip--live">online</span>
+          <div class="chat__tabs" data-seg="chattab">
+            <button class="tab is-active" data-value="chat">Chat</button>
+            <button class="tab" data-value="activity">Activity</button>
+            <span class="tab__thumb" aria-hidden="true"></span>
+          </div>
+        </header>
+
+        <div class="chat__scroll">
+          <div class="chat__log" data-log></div>
+          <div class="typing" data-typing hidden>
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+
+        <form class="composer" data-composer>
+          <div class="composer__field">
+            <textarea
+              rows="1"
+              placeholder="Say something — the reply streams in…"
+              data-input
+            ></textarea>
+          </div>
+          <button class="btn btn--primary ripple" type="submit">
+            <span>Send</span>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h13M13 6l6 6-6 6" />
+            </svg>
+          </button>
+        </form>
+      </section>
+
+      <!-- ──────────────────────────── GALLERY ──────────────────────────── -->
+      <section class="gallery" aria-label="Effect gallery">
+        <!-- 1 ─ scan sweep -->
+        <article class="demo glass">
+          <h3>Hologram scan</h3>
+          <p class="how">
+            <code>mask-image</code> = a moving window that decides which pixels of the
+            overlay are visible. Slide the window, the wireframe wipes in.
+          </p>
+          <div class="stage stage--scan">
+            <div class="scan__base"></div>
+            <div class="scan__holo"></div>
+            <span class="scan__line"></span>
+          </div>
+        </article>
+
+        <!-- 2 ─ alert glow -->
+        <article class="demo glass">
+          <h3>Anomaly glow</h3>
+          <p class="how">
+            Stacked <code>radial-gradient</code> blobs (soft circles of light) under a
+            <code>blur()</code>, breathing via <code>opacity</code> + <code>scale</code>.
+          </p>
+          <div class="stage stage--glow">
+            <span class="glow__core"></span>
+            <span class="glow__ring"></span>
+            <span class="glow__ring glow__ring--2"></span>
+            <b class="glow__read">ANOMALY</b>
+          </div>
+        </article>
+
+        <!-- 3 ─ line art -->
+        <article class="demo glass">
+          <h3>Line-art draw-on</h3>
+          <p class="how">
+            <code>stroke-dasharray</code> turns a line into dashes;
+            <code>stroke-dashoffset</code> slides them. Make one dash as long as the whole
+            path and sliding it looks like drawing.
+          </p>
+          <div class="stage stage--art">
+            <svg viewBox="0 0 120 80" class="art" fill="none" stroke="currentColor"
+                 stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="60" cy="40" r="26" class="draw" />
+              <path d="M60 14v52M34 40h52" class="draw" />
+              <path d="M42 22 78 58M78 22 42 58" class="draw draw--late" />
+              <circle cx="60" cy="40" r="7" class="draw draw--late" />
+            </svg>
+            <button class="btn btn--ghost ripple" data-replay>Replay</button>
+          </div>
+        </article>
+
+        <!-- 4 ─ magnetic / tilt -->
+        <article class="demo glass">
+          <h3>Tilt &amp; magnet</h3>
+          <p class="how">
+            <code>perspective</code> gives the parent depth, then
+            <code>rotateX/rotateY</code> leans the card toward your cursor. The button
+            drifts a few px to "attract" the pointer.
+          </p>
+          <div class="stage stage--tilt">
+            <div class="tilt" data-tilt>
+              <span class="tilt__sheen"></span>
+              <b>AXS-332.01</b>
+              <small>link stable · 94%</small>
+              <button class="btn btn--ghost ripple" data-magnet>Deploy</button>
+            </div>
+          </div>
+        </article>
+
+        <!-- 5 ─ spring -->
+        <article class="demo glass">
+          <h3>Spring entrance</h3>
+          <p class="how">
+            An easing curve that overshoots and settles, so panels feel like they have
+            weight instead of sliding on rails.
+          </p>
+          <div class="stage stage--spring">
+            <button class="btn btn--ghost ripple" data-spring>Toggle panel</button>
+            <div class="springbox" data-springbox hidden>
+              <b>Payload</b>
+              <span>Uranium oxide · 77%</span>
+              <i class="bar"><u style="--v: 77%"></u></i>
+            </div>
+          </div>
+        </article>
+
+        <!-- 6 ─ shimmer -->
+        <article class="demo glass">
+          <h3>Streaming shimmer</h3>
+          <p class="how">
+            <code>background-clip: text</code> paints a gradient *inside* the letters.
+            Slide the gradient and light appears to travel through the words.
+          </p>
+          <div class="stage stage--shimmer">
+            <p class="shimmer">Generating response…</p>
+            <p class="skeleton"><span></span><span></span><span></span></p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <footer class="foot glass">
+      <span class="label">FPS</span><b data-fps>—</b>
+      <span class="sep"></span>
+      <span class="label">Layers</span><b data-layers>—</b>
+      <span class="sep"></span>
+      <span class="note">
+        No footage ships with this page. Drop in your own clip, or grab a CC0 loop from
+        Pexels / Coverr.
+      </span>
+    </footer>
+
+    <script src="/lab.js" type="module"></script>
+  </body>
+</html>

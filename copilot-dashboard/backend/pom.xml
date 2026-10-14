@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>dev.jeswin</groupId>
+    <artifactId>copilot-dashboard-backend</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>copilot-dashboard-backend</name>
+    <description>Spring Boot backend that hosts the GitHub Copilot SDK agent runtime</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <copilot.sdk.version>1.0.16</copilot.sdk.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- The Copilot agent runtime, exposed as a Java API. -->
+        <dependency>
+            <groupId>com.github</groupId>
+            <artifactId>copilot-sdk-java</artifactId>
+            <version>${copilot.sdk.version}</version>
+        </dependency>
+
+        <!--
+          Read-only access to the Copilot CLI's own session store
+          (~/.copilot/session-store.db). The CLI records every past conversation
+          and every model request there; we surface both so the dashboard can show
+          real history and real month-to-date spend. We never write to this file.
+        -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.46.1.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <compilerArgs>
+                        <!-- Opt in to the SDK's @CopilotExperimental APIs instead of failing the build. -->
+                        <arg>-Acopilot.experimental.allowed=true</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+            <!--
+              copy-resources below never deletes anything, so every UI rebuild would leave its old
+              hashed bundles in target/classes/static and in the jar. Clearing that folder first
+              keeps the jar to exactly the current build, or API-only when there is none.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>clear-bundled-ui</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                        <configuration>
+                            <excludeDefaultDirectories>true</excludeDefaultDirectories>
+                            <filesets>
+                                <fileset>
+                                    <directory>${project.build.outputDirectory}/static</directory>
+                                </fileset>
+                            </filesets>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--
+              One-command run: when the Cortex UI has been built (cortex-chat/dist), bundle it into
+              the jar so http://localhost:8080/ serves the UI and the API from the same origin.
+              Without a build the directory is simply skipped and the jar is API-only.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>bundle-cortex-ui</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/static</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/../../cortex-chat/dist</directory>
+                                    <filtering>false</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

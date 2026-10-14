@@ -1,0 +1,101 @@
+server:
+  port: 8080
+  # Loopback only. The API has no login and can run tools on this machine, so it must not be
+  # reachable from the network. Set CORTEX_BIND_ADDRESS=0.0.0.0 only if you accept that risk.
+  address: ${CORTEX_BIND_ADDRESS:127.0.0.1}
+
+spring:
+  application:
+    name: copilot-dashboard
+  mvc:
+    async:
+      # -1 disables the MVC async timeout so Server-Sent Events streams stay open.
+      request-timeout: -1
+
+copilot:
+  # Leave blank to let the SDK resolve `copilot` from PATH.
+  # Override with an absolute path if the CLI is not on PATH, e.g.
+  # cli-path: C:/Users/<you>/AppData/Local/Microsoft/WinGet/Packages/GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe/copilot.exe
+  cli-path:
+  default-model: auto
+  default-working-directory: ${user.home}
+  # Maximum events replayed to a browser that connects or reconnects mid-session.
+  event-history-limit: 500
+  # How long a parked permission request waits for a human answer before being denied.
+  permission-timeout-seconds: 600
+  # Set true to stream every runtime event (very chatty) instead of the curated list.
+  forward-all-events: false
+  # Browser origins allowed to call this API (the Vite dev server).
+  allowed-origins:
+    - http://localhost:5173
+    - http://127.0.0.1:5173
+
+  # Bring your own model: the listed models are served by your own endpoint with your own key,
+  # alongside (or instead of) GitHub Copilot. They need no Copilot sign-in and use no premium
+  # quota. The key is read from the environment variable named by api-key-env and is never stored
+  # in a file. Leave type blank to turn this off. Examples:
+  #   Ollama (local, no key):  type: openai     base-url: http://localhost:11434/v1   models: [llama3.2]
+  #   OpenAI:                  type: openai     base-url: https://api.openai.com/v1   models: [gpt-4o-mini]
+  #   Anthropic:               type: anthropic  base-url: https://api.anthropic.com   models: [<model-id>]
+  #   Azure OpenAI:            type: azure      base-url: https://<resource>.openai.azure.com
+  #                            azure-api-version: <version>   models: [<deployment-name>]
+  provider:
+    type:
+    base-url:
+    api-key-env: CORTEX_PROVIDER_API_KEY
+    # completions (default, widest support) or responses
+    wire-api:
+    azure-api-version:
+    models: []
+
+  # MCP servers added to every new chat. Their tools still go through the permission prompt.
+  # The command must be on PATH. Example — browser automation, handy for QA:
+  #   mcp-servers:
+  #     playwright:
+  #       command: npx
+  #       args: ["-y", "@playwright/mcp@latest"]
+  #     docs:
+  #       type: http
+  #       url: https://example.com/mcp
+  #       headers:
+  #         Authorization: Bearer ${DOCS_MCP_TOKEN}
+  mcp-servers: {}
+
+  # Personas: extra instructions appended to the agent's system prompt, picked per chat.
+  # default-persona applies when the browser does not choose one; blank means none.
+  default-persona:
+  personas:
+    - id: qa-engineer
+      name: QA Engineer
+      description: Test cases with preconditions, priorities and regression impact
+      prompt: >-
+        Act as a senior QA engineer. When asked to test or review a feature, first state the
+        preconditions explicitly, separating mandatory fields from optional ones, and the test
+        data needed. Then cover positive, negative, boundary and edge-case scenarios, ordered by
+        risk. Present test cases as a Markdown table with the columns
+        ID | Title | Preconditions | Steps | Expected result | Priority.
+        After the table, list the regression impact: which existing features could break and
+        what to re-test. Raise anything ambiguous in the requirement as a question instead of
+        assuming. Be concise: no filler and no restating of the requirement.
+    - id: code-reviewer
+      name: Code Reviewer
+      description: Bugs, security and edge cases with severity and a concrete fix
+      prompt: >-
+        Act as a strict code reviewer. Review for correctness, security, unhandled edge cases,
+        error handling and performance, in that order. For each finding give the severity
+        (high, medium or low), the file and line, the problem in one sentence and a concrete fix.
+        Do not comment on formatting, naming or style unless it hides a bug. If there is nothing
+        significant, say so in one line instead of inventing issues.
+    - id: eli5-tutor
+      name: ELI5 Tutor
+      description: Explains every piece of syntax in plain words, with an analogy
+      prompt: >-
+        Act as a patient tutor for a beginner. When you show code, break down every syntax
+        element, each keyword, operator, bracket and method call, in plain words, line by line.
+        Use one everyday analogy for the overall idea, then a tiny worked example with real
+        values, and end with a three-bullet recap. Avoid jargon; when a technical term is
+        unavoidable, define it in one short sentence.
+
+logging:
+  level:
+    dev.jeswin.copilotdashboard: DEBUG

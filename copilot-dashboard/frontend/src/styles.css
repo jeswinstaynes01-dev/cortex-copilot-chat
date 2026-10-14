@@ -1,0 +1,2192 @@
+/* =============================================================================
+   Copilot Mission Control — stylesheet
+   Design language adapted from the "Raktor" drone-mission dashboard:
+   near-black charcoal surfaces, a single vivid lime accent, hairline borders,
+   monospaced telemetry readouts and tiny tracked uppercase labels.
+
+   1.  Tokens
+   2.  Reset & base
+   3.  Backdrop
+   4.  Primitives — eyebrow, chip, led, button, icon button, ripple
+   5.  Form controls
+   6.  App shell
+   7.  Sidebar
+   8.  Topbar & banner
+   9.  Empty state
+   10. Workspace & chat panel
+   11. Messages
+   12. Tool cards
+   13. Permission prompt
+   14. Composer
+   15. Inspector (telemetry)
+   16. Modal
+   17. Scrollbars
+   18. Responsive
+   19. Reduced motion
+   ========================================================================== */
+
+/* -----------------------------------------------------------------------------
+   1. Tokens
+   -------------------------------------------------------------------------- */
+
+:root {
+  /* Surfaces, darkest to lightest. */
+  --bg: #0e1013;
+  --surface: #15181d;
+  --surface-2: #1a1e24;
+  --surface-3: #21262e;
+
+  /* Hairlines. `--line` is the default border; `--line-2` is for emphasis. */
+  --line: #262b33;
+  --line-2: #333945;
+
+  /* Accent. Lime carries every primary action and active state. */
+  --lime: #b4ff3f;
+  --lime-bright: #c8ff6e;
+  --lime-dim: #7ea92c;
+  --lime-wash: rgba(180, 255, 63, 0.1);
+  --lime-glow: rgba(180, 255, 63, 0.35);
+
+  /* Support colours, used sparingly. */
+  --aqua: #19fff9;
+  --aqua-wash: rgba(25, 255, 249, 0.1);
+  --danger: #ff5162;
+  --danger-wash: rgba(255, 81, 98, 0.12);
+  --warn: #ff9a23;
+  --warn-wash: rgba(255, 154, 35, 0.12);
+
+  /* Text ramp. */
+  --text: #f2f5f8;
+  --text-2: #a3a8b4;
+  --text-3: #6b7280;
+
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", "Cascadia Mono", Menlo, Consolas,
+    monospace;
+
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r: 9px;
+  --r-lg: 13px;
+
+  --sidebar-w: 276px;
+  --inspector-w: 336px;
+
+  /* Panels float on the grid backdrop; this is their shared elevation. */
+  --shadow: 0 18px 44px -28px rgba(0, 0, 0, 0.95);
+  --inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* -----------------------------------------------------------------------------
+   2. Reset & base
+   -------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* One consistent focus ring everywhere, only for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+/* -----------------------------------------------------------------------------
+   3. Backdrop
+   -------------------------------------------------------------------------- */
+
+/*
+  The canvas is fixed rather than absolute so it never scrolls or resizes with
+  layout. Nothing above it may use transform/filter/backdrop-filter, or the
+  fixed positioning would be trapped in that ancestor's containing block.
+*/
+.gridfield {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* A soft vignette sinks the corners so content reads as lit from the centre. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 90% at 50% 0%, transparent 35%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* -----------------------------------------------------------------------------
+   4. Primitives
+   -------------------------------------------------------------------------- */
+
+/* Tiny tracked uppercase label — the reference uses these to title every group. */
+.eyebrow {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.eyebrow--dim {
+  font-family: var(--font-mono);
+  letter-spacing: 0.1em;
+}
+
+/* Compact metadata token. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-xs);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.chip--mono {
+  color: var(--text-2);
+}
+
+.chip--quiet {
+  color: var(--text-3);
+}
+
+.chip--live,
+.chip--running {
+  border-color: rgba(180, 255, 63, 0.35);
+  background: var(--lime-wash);
+  color: var(--lime);
+}
+
+.chip--warn {
+  border-color: rgba(255, 154, 35, 0.35);
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+.chip--failed {
+  border-color: rgba(255, 81, 98, 0.35);
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+
+.chip--done {
+  border-color: rgba(25, 255, 249, 0.3);
+  background: var(--aqua-wash);
+  color: var(--aqua);
+}
+
+/* Status lamp. The ring is drawn with box-shadow so the dot stays 7px. */
+.led {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-3);
+  box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.14);
+}
+
+.led--on,
+.led--idle,
+.led--done {
+  background: var(--lime);
+  box-shadow: 0 0 0 3px var(--lime-wash);
+}
+
+.led--off {
+  background: var(--text-3);
+  box-shadow: 0 0 0 3px rgba(107, 114, 128, 0.14);
+}
+
+.led--failed {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-wash);
+}
+
+.led--busy,
+.led--running {
+  background: var(--aqua);
+  box-shadow: 0 0 0 3px var(--aqua-wash);
+  animation: led-pulse 1.4s var(--ease) infinite;
+}
+
+@keyframes led-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px var(--aqua-wash);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(25, 255, 249, 0.02);
+  }
+}
+
+/* --- Buttons ------------------------------------------------------------- */
+
+.btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition:
+    background 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    color 0.18s var(--ease),
+    transform 0.12s var(--ease),
+    box-shadow 0.18s var(--ease);
+}
+
+.btn:hover:not(:disabled) {
+  background: #2a2f39;
+  border-color: #3f4654;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn__text {
+  line-height: 1;
+}
+
+.btn--sm {
+  height: 32px;
+  padding: 0 11px;
+  font-size: 12.5px;
+}
+
+.btn--block {
+  width: 100%;
+}
+
+.btn--primary {
+  background: var(--lime);
+  border-color: var(--lime);
+  color: #0c1005;
+  font-weight: 650;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--lime-bright);
+  border-color: var(--lime-bright);
+  box-shadow: 0 8px 26px -10px var(--lime-glow);
+}
+
+.btn--primary:disabled {
+  background: var(--surface-3);
+  border-color: var(--line-2);
+  color: var(--text-3);
+  opacity: 1;
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: var(--line-2);
+  color: var(--text-2);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.btn--danger {
+  background: transparent;
+  border-color: rgba(255, 81, 98, 0.4);
+  color: var(--danger);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: var(--danger-wash);
+  border-color: var(--danger);
+}
+
+.btn--stop {
+  background: var(--danger-wash);
+  border-color: rgba(255, 81, 98, 0.45);
+  color: var(--danger);
+}
+
+.btn--stop:hover:not(:disabled) {
+  background: rgba(255, 81, 98, 0.2);
+  border-color: var(--danger);
+}
+
+/* --- Icon buttons -------------------------------------------------------- */
+
+.icon-btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  transition:
+    background 0.16s var(--ease),
+    color 0.16s var(--ease),
+    border-color 0.16s var(--ease);
+}
+
+.icon-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--line-2);
+  color: var(--text);
+}
+
+.icon-btn:active {
+  transform: scale(0.94);
+}
+
+.icon-btn--sm {
+  width: 26px;
+  height: 26px;
+}
+
+.icon-btn.is-active {
+  background: var(--lime-wash);
+  border-color: rgba(180, 255, 63, 0.35);
+  color: var(--lime);
+}
+
+/* --- Ripple -------------------------------------------------------------- */
+
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.18;
+  transform: scale(0);
+  pointer-events: none;
+  animation: ripple 0.55s var(--ease-out) forwards;
+}
+
+@keyframes ripple {
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   5. Form controls
+   -------------------------------------------------------------------------- */
+
+.field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.field__label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.field__control {
+  width: 100%;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background-color: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  transition:
+    border-color 0.18s var(--ease),
+    box-shadow 0.18s var(--ease),
+    background 0.18s var(--ease);
+}
+
+.field__control--mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.field__control:hover {
+  border-color: #3f4654;
+}
+
+/*
+  `background-color` rather than the `background` shorthand: the shorthand would
+  reset `background-image`, wiping the gradient chevron off `select` on focus.
+*/
+.field__control:focus {
+  outline: none;
+  border-color: var(--lime);
+  background-color: var(--surface);
+  box-shadow: 0 0 0 3px var(--lime-wash);
+}
+
+select.field__control {
+  appearance: none;
+  cursor: pointer;
+  /* Chevron drawn with gradients so there is no extra asset to ship. */
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-2) 50%),
+    linear-gradient(135deg, var(--text-2) 50%, transparent 50%);
+  background-position:
+    calc(100% - 17px) 17px,
+    calc(100% - 12px) 17px;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 32px;
+}
+
+select.field__control option {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.field__hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+/* --- Checkbox ------------------------------------------------------------ */
+
+.checkbox {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  cursor: pointer;
+  transition: border-color 0.18s var(--ease);
+}
+
+.checkbox:hover {
+  border-color: var(--line-2);
+}
+
+/* The native input stays focusable but invisible; .checkbox__box is the visual. */
+.checkbox input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.checkbox__box {
+  position: relative;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-xs);
+  background: var(--surface-3);
+  transition:
+    background 0.16s var(--ease),
+    border-color 0.16s var(--ease);
+}
+
+/* Checkmark is two borders on a rotated box — no icon font needed. */
+.checkbox__box::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 1.5px;
+  width: 5px;
+  height: 9px;
+  border: solid #0c1005;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) scale(0);
+  transition: transform 0.18s var(--ease-out);
+}
+
+.checkbox input:checked + .checkbox__box {
+  background: var(--lime);
+  border-color: var(--lime);
+}
+
+.checkbox input:checked + .checkbox__box::after {
+  transform: rotate(45deg) scale(1);
+}
+
+.checkbox input:focus-visible + .checkbox__box {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+}
+
+.checkbox__text {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.checkbox__text small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+/* -----------------------------------------------------------------------------
+   6. App shell
+   -------------------------------------------------------------------------- */
+
+.app {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+}
+
+.main {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Shared panel shell: translucent so the grid backdrop shows faintly through. */
+.panel {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: rgba(21, 24, 29, 0.82);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--inset-top), var(--shadow);
+}
+
+/* -----------------------------------------------------------------------------
+   7. Sidebar
+   -------------------------------------------------------------------------- */
+
+.sidebar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: rgba(14, 16, 19, 0.88);
+  backdrop-filter: blur(16px);
+}
+
+.sidebar__header {
+  padding: 16px 14px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.brand__mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(180, 255, 63, 0.3);
+  border-radius: var(--r-sm);
+  background: var(--lime-wash);
+  color: var(--lime);
+}
+
+.brand__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.brand__name {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.brand__sub {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sidebar__sectionhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 8px;
+}
+
+.sidebar__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sidebar__empty {
+  padding: 8px 6px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-3);
+}
+
+/* --- Session card -------------------------------------------------------- */
+
+.session-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 11px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  /* `--i` is set inline per card to stagger the entry. */
+  animation: card-in 0.36s var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+  transition:
+    border-color 0.18s var(--ease),
+    background 0.18s var(--ease),
+    transform 0.18s var(--ease);
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+
+.session-card:hover {
+  background: var(--surface-2);
+  border-color: var(--line-2);
+}
+
+/* Lime rail marks the active session. Always present so it can animate in. */
+.session-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--lime);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform 0.26s var(--ease-out);
+}
+
+.session-card--active {
+  background: var(--surface-2);
+  border-color: rgba(180, 255, 63, 0.3);
+}
+
+.session-card--active::before {
+  transform: scaleY(1);
+}
+
+.session-card__top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.session-card__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 550;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+/* Revealed on hover/focus so the row stays calm at rest. */
+.session-card__delete {
+  opacity: 0;
+  color: var(--text-3);
+  transition: opacity 0.16s var(--ease), color 0.16s var(--ease);
+}
+
+.session-card:hover .session-card__delete,
+.session-card:focus-within .session-card__delete {
+  opacity: 1;
+}
+
+.session-card__delete:hover {
+  background: var(--danger-wash);
+  border-color: rgba(255, 81, 98, 0.35);
+  color: var(--danger);
+}
+
+.session-card__path {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.session-card__path span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Paths matter most at the tail, so bias the ellipsis to the front. */
+  direction: rtl;
+  text-align: left;
+}
+
+.session-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+/* Mobile drawer scrim. Hidden until the sidebar becomes an overlay. */
+.sidebar__backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: 0;
+  padding: 0;
+  background: rgba(5, 6, 8, 0.66);
+  backdrop-filter: blur(2px);
+}
+
+/*
+  Scoped with `.sidebar` so it beats the plain `.icon-btn` rule above regardless
+  of source order — an earlier version of this file lost that fight and leaked
+  the close button onto desktop.
+*/
+.sidebar .sidebar__close {
+  display: none;
+  margin-left: auto;
+}
+
+/* -----------------------------------------------------------------------------
+   8. Topbar & banner
+   -------------------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+  height: 60px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(14, 16, 19, 0.7);
+  backdrop-filter: blur(16px);
+}
+
+.topbar__menu {
+  display: none;
+}
+
+.topbar__id {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.topbar__title {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+/* --- Readouts ------------------------------------------------------------ */
+
+.readouts {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 68px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
+.readout__label {
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.readout__value {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.readout--live {
+  border-color: rgba(180, 255, 63, 0.3);
+  background: var(--lime-wash);
+}
+
+.readout--live .readout__value {
+  color: var(--lime);
+}
+
+/* --- Banner -------------------------------------------------------------- */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  margin: 12px 18px 0;
+  padding: 9px 9px 9px 13px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: 12.5px;
+  animation: banner-in 0.3s var(--ease-out) both;
+}
+
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.banner--error {
+  border-color: rgba(255, 81, 98, 0.4);
+  background: var(--danger-wash);
+  color: #ffb3bb;
+}
+
+.banner__text {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* -----------------------------------------------------------------------------
+   9. Empty state
+   -------------------------------------------------------------------------- */
+
+.empty {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 32px 24px;
+  text-align: center;
+  animation: fade-rise 0.45s var(--ease-out) both;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.empty__art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 108px;
+  height: 108px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, var(--lime-wash), transparent 68%);
+  color: var(--lime-dim);
+}
+
+/* Expanding ring, echoing a radar return. */
+.empty__ping {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--lime);
+  border-radius: 50%;
+  opacity: 0;
+  animation: ping 3.2s var(--ease-out) infinite;
+}
+
+@keyframes ping {
+  0% {
+    transform: scale(0.72);
+    opacity: 0.5;
+  }
+  70%,
+  100% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+.empty__title {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.empty__body {
+  max-width: 400px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+
+.empty .btn {
+  margin-top: 10px;
+}
+
+/* -----------------------------------------------------------------------------
+   10. Workspace & chat panel
+   -------------------------------------------------------------------------- */
+
+/*
+  `minmax(0, 1fr)` on the row is load-bearing: an implicit `auto` row would let
+  the panes grow to fit their content instead of scrolling inside the viewport.
+*/
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 18px 18px;
+  transition: grid-template-columns 0.3s var(--ease-out);
+}
+
+.workspace--split {
+  grid-template-columns: minmax(0, 1fr) var(--inspector-w);
+}
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(26, 30, 36, 0.5);
+}
+
+.chat__ident {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat__path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.chat__path span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.chat__path svg {
+  flex: none;
+}
+
+.chat__status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+}
+
+/* -----------------------------------------------------------------------------
+   11. Messages
+   -------------------------------------------------------------------------- */
+
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.messages__hint {
+  margin: auto;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 82%;
+  animation: msg-in 0.32s var(--ease-out) both;
+}
+
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.turn--user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.turn--assistant {
+  align-self: flex-start;
+}
+
+.turn__who {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.bubble {
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  font-size: 13.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubble--user {
+  border-color: rgba(180, 255, 63, 0.3);
+  background: var(--lime-wash);
+  color: #e6ffc4;
+  border-bottom-right-radius: var(--r-xs);
+}
+
+.bubble--assistant {
+  background: var(--surface-2);
+  color: var(--text);
+  border-bottom-left-radius: var(--r-xs);
+}
+
+.bubble--error {
+  align-self: flex-start;
+  max-width: 82%;
+  border-color: rgba(255, 81, 98, 0.4);
+  background: var(--danger-wash);
+  color: #ffb3bb;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  animation: msg-in 0.32s var(--ease-out) both;
+}
+
+/* Streaming cursor. */
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  margin-left: 3px;
+  vertical-align: text-bottom;
+  background: var(--lime);
+  animation: caret-blink 1s steps(2, start) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Neutral inline note, e.g. "turn stopped by user". */
+.notice {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: 1px dashed var(--line-2);
+  border-radius: 99px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  animation: msg-in 0.32s var(--ease-out) both;
+}
+
+/* -----------------------------------------------------------------------------
+   12. Tool cards
+   -------------------------------------------------------------------------- */
+
+.tool-card {
+  align-self: stretch;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface-2);
+  animation: msg-in 0.32s var(--ease-out) both;
+  transition: border-color 0.2s var(--ease);
+}
+
+.tool-card--running {
+  border-color: rgba(25, 255, 249, 0.3);
+}
+
+.tool-card--failed {
+  border-color: rgba(255, 81, 98, 0.35);
+}
+
+.tool-card__header {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  transition: background 0.16s var(--ease);
+}
+
+.tool-card__header:hover {
+  background: var(--surface-3);
+}
+
+.tool-card__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-xs);
+  background: var(--bg);
+  color: var(--text-2);
+}
+
+.tool-card--running .tool-card__icon {
+  border-color: rgba(25, 255, 249, 0.35);
+  color: var(--aqua);
+}
+
+.tool-card--failed .tool-card__icon {
+  border-color: rgba(255, 81, 98, 0.35);
+  color: var(--danger);
+}
+
+.tool-card__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.tool-card__chevron {
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--text-3);
+  transition: transform 0.24s var(--ease-out);
+}
+
+.tool-card--open .tool-card__chevron {
+  transform: rotate(90deg);
+}
+
+/*
+  `grid-template-rows: 0fr -> 1fr` animates to the content's natural height with
+  no fixed max-height guess. The inner div must be the only child and clip.
+*/
+.tool-card__wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s var(--ease-out);
+}
+
+.tool-card--open .tool-card__wrap {
+  grid-template-rows: 1fr;
+}
+
+.tool-card__wrap > div {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.tool-card__body {
+  padding: 2px 12px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.tool-card__label,
+.insp-label {
+  margin: 10px 0 5px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.tool-card__body pre,
+.insp-row__body pre {
+  max-height: 280px;
+  overflow: auto;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--text-2);
+}
+
+/* -----------------------------------------------------------------------------
+   13. Permission prompt
+   -------------------------------------------------------------------------- */
+
+.permissions {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 18px 4px;
+}
+
+.permission {
+  padding: 13px;
+  border: 1px solid rgba(255, 154, 35, 0.4);
+  border-radius: var(--r);
+  background: linear-gradient(180deg, var(--warn-wash), transparent 70%), var(--surface-2);
+  animation: msg-in 0.32s var(--ease-out) both;
+}
+
+.permission__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 9px;
+}
+
+.permission__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(255, 154, 35, 0.4);
+  border-radius: var(--r-xs);
+  background: var(--warn-wash);
+  color: var(--warn);
+}
+
+.permission__title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.permission__intention {
+  margin-bottom: 9px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.permission__detail,
+.permission__raw {
+  max-height: 200px;
+  overflow: auto;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.permission__raw {
+  margin-top: 10px;
+  color: var(--text-2);
+}
+
+.permission__flags {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.permission__flags li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  color: var(--warn);
+}
+
+.permission__flags svg {
+  flex: none;
+}
+
+.permission__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* -----------------------------------------------------------------------------
+   14. Composer
+   -------------------------------------------------------------------------- */
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex: none;
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--line);
+  background: rgba(26, 30, 36, 0.5);
+}
+
+/*
+  A <textarea> is a replaced element with no usable ::before/::after, so the
+  animated underline lives on this wrapper instead.
+*/
+.composer__field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  max-height: 180px;
+  padding: 11px 13px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--text);
+  /* Must stay >= 16px or iOS Safari zooms the viewport on focus. */
+  font-size: 16px;
+  line-height: 1.55;
+  resize: vertical;
+  transition:
+    border-color 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.composer textarea::placeholder {
+  color: var(--text-3);
+}
+
+.composer textarea:focus {
+  outline: none;
+  border-color: rgba(180, 255, 63, 0.45);
+  background: var(--surface);
+}
+
+/* Lime beam that wipes in from the centre on focus. */
+.composer__beam {
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  bottom: 0;
+  height: 1.5px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--lime), transparent);
+  transform: scaleX(0);
+  transition: transform 0.32s var(--ease-out);
+}
+
+.composer--focused .composer__beam {
+  transform: scaleX(1);
+}
+
+.composer .btn {
+  height: 42px;
+}
+
+/* -----------------------------------------------------------------------------
+   15. Inspector (telemetry)
+   -------------------------------------------------------------------------- */
+
+.inspector {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  animation: inspector-in 0.28s var(--ease-out) both;
+}
+
+.inspector.is-exiting {
+  animation: inspector-out 0.24s var(--ease) both;
+}
+
+@keyframes inspector-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes inspector-out {
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+.inspector__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(26, 30, 36, 0.5);
+}
+
+.inspector__heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.inspector__heading svg {
+  color: var(--lime);
+}
+
+/* --- Stat tiles ---------------------------------------------------------- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  flex: none;
+  /* The 1px gap plus this background paints the hairline rules between tiles. */
+  background: var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 12px;
+  background: var(--surface);
+}
+
+.tile__label {
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.tile__value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.tile__value.is-ok {
+  color: var(--lime);
+}
+
+.tile__value.is-bad {
+  color: var(--danger);
+}
+
+.tile__value.is-busy {
+  color: var(--aqua);
+}
+
+/* --- Token gauge --------------------------------------------------------- */
+
+.gauge {
+  flex: none;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.gauge__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+
+.gauge__label {
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.gauge__num {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.gauge__bar {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--surface-3);
+}
+
+.gauge__fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--lime-dim), var(--lime));
+  box-shadow: 0 0 10px -1px var(--lime-glow);
+  transition: width 0.5s var(--ease-out), background 0.3s var(--ease);
+}
+
+.gauge__fill--hot {
+  background: linear-gradient(90deg, var(--warn), var(--danger));
+  box-shadow: 0 0 10px -1px rgba(255, 81, 98, 0.5);
+}
+
+/* --- Tabs ---------------------------------------------------------------- */
+
+.inspector__tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.inspector__tab {
+  position: relative;
+  overflow: hidden;
+  padding: 10px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  transition: color 0.18s var(--ease);
+}
+
+.inspector__tab:hover {
+  color: var(--text-2);
+}
+
+.inspector__tab.is-active {
+  color: var(--lime);
+}
+
+/* Sliding indicator — one element that translates rather than two that fade. */
+.inspector__ink {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 50%;
+  height: 1.5px;
+  background: var(--lime);
+  box-shadow: 0 0 8px var(--lime-glow);
+  transition: transform 0.3s var(--ease-out);
+}
+
+.inspector__ink--tools {
+  transform: translateX(0);
+}
+
+.inspector__ink--events {
+  transform: translateX(100%);
+}
+
+/* --- Body ---------------------------------------------------------------- */
+
+.inspector__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Keyed on the active tab in JSX, so this replays on every tab switch. */
+  animation: fade-rise 0.26s var(--ease-out) both;
+}
+
+.inspector__empty {
+  padding: 14px 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.insp-row {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.insp-row--running {
+  border-color: rgba(25, 255, 249, 0.25);
+}
+
+.insp-row--failed {
+  border-color: rgba(255, 81, 98, 0.3);
+}
+
+.insp-row__head {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  transition: background 0.16s var(--ease);
+}
+
+.insp-row__head:hover {
+  background: var(--surface-3);
+}
+
+.insp-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.insp-row__time {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.insp-row__body {
+  padding: 0 9px 9px;
+  animation: fade-rise 0.22s var(--ease-out) both;
+}
+
+/* Event-type pill, coloured by prefix family. */
+.ev-pill {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 2px 6px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-xs);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.ev-pill--lime {
+  border-color: rgba(180, 255, 63, 0.3);
+  background: var(--lime-wash);
+  color: var(--lime);
+}
+
+.ev-pill--aqua {
+  border-color: rgba(25, 255, 249, 0.28);
+  background: var(--aqua-wash);
+  color: var(--aqua);
+}
+
+.ev-pill--red {
+  border-color: rgba(255, 81, 98, 0.32);
+  background: var(--danger-wash);
+  color: var(--danger);
+}
+
+/* Inspector scrim — only used when the pane overlays below 1180px. */
+.inspector__backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  border: 0;
+  padding: 0;
+  background: rgba(5, 6, 8, 0.6);
+  backdrop-filter: blur(2px);
+}
+
+/* -----------------------------------------------------------------------------
+   16. Modal
+   -------------------------------------------------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 6, 8, 0.72);
+  backdrop-filter: blur(4px);
+  animation: backdrop-in 0.22s var(--ease) both;
+}
+
+.modal-backdrop.is-exiting {
+  animation: backdrop-out 0.22s var(--ease) both;
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.modal {
+  width: min(460px, 100%);
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  padding: 18px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--inset-top), 0 40px 80px -30px rgba(0, 0, 0, 0.95);
+  animation: modal-in 0.26s var(--ease-out) both;
+}
+
+.modal-backdrop.is-exiting .modal {
+  animation: modal-out 0.2s var(--ease) both;
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+}
+
+@keyframes modal-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.modal__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.modal__title {
+  margin-top: 2px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+/* -----------------------------------------------------------------------------
+   17. Scrollbars
+   -------------------------------------------------------------------------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  /* Transparent border + background-clip fakes padding around the thumb. */
+  border: 3px solid transparent;
+  border-radius: 99px;
+  background: var(--line-2);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #454c5c;
+  background-clip: content-box;
+}
+
+/* -----------------------------------------------------------------------------
+   18. Responsive
+   -------------------------------------------------------------------------- */
+
+@media (max-width: 1400px) {
+  :root {
+    --inspector-w: 300px;
+    --sidebar-w: 250px;
+  }
+}
+
+/* Below this the inspector stops being a column and overlays the chat instead. */
+@media (max-width: 1180px) {
+  .workspace--split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .inspector {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    width: min(360px, 90vw);
+    border-radius: 0;
+    border-right: 0;
+    border-top: 0;
+    border-bottom: 0;
+  }
+
+  .inspector__backdrop {
+    display: block;
+    animation: backdrop-in 0.22s var(--ease) both;
+  }
+
+  .inspector__backdrop.is-exiting {
+    animation: backdrop-out 0.22s var(--ease) both;
+  }
+}
+
+/* Sidebar becomes a drawer. */
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 50;
+    width: min(300px, 86vw);
+    transform: translateX(-100%);
+    transition: transform 0.3s var(--ease-out);
+  }
+
+  .sidebar--open {
+    transform: translateX(0);
+  }
+
+  .sidebar .sidebar__close {
+    display: inline-grid;
+  }
+
+  .sidebar__backdrop {
+    display: block;
+    animation: backdrop-in 0.26s var(--ease) both;
+  }
+
+  .sidebar__backdrop.is-exiting {
+    animation: backdrop-out 0.26s var(--ease) both;
+  }
+
+  .topbar__menu {
+    display: inline-grid;
+  }
+
+  .workspace {
+    padding: 10px 12px 12px;
+  }
+
+  .banner {
+    margin: 10px 12px 0;
+  }
+}
+
+@media (max-width: 680px) {
+  .readouts {
+    display: none;
+  }
+
+  .topbar {
+    height: 56px;
+    padding: 0 12px;
+    gap: 10px;
+  }
+
+  /* The label would wrap the button; the + icon still reads clearly. */
+  .topbar .btn--primary .btn__text {
+    display: none;
+  }
+
+  .topbar .btn--primary {
+    width: 32px;
+    padding: 0;
+  }
+
+  .messages {
+    padding: 14px 12px;
+    gap: 12px;
+  }
+
+  .turn,
+  .bubble--error {
+    max-width: 94%;
+  }
+
+  .workspace {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .chat {
+    border-radius: var(--r);
+  }
+
+  /*
+    The status chips are fixed-width, so on a phone they starve the flexible
+    path down to a single character. Wrap instead: chips keep row one, the
+    working directory gets row two to itself and stays readable.
+  */
+  .chat__header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .chat__status {
+    order: 1;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .chat__ident {
+    order: 2;
+    flex: 1 0 100%;
+  }
+
+  .permissions {
+    padding: 0 12px 4px;
+  }
+
+  .composer {
+    padding: 10px;
+  }
+}
+
+/* -----------------------------------------------------------------------------
+   19. Reduced motion
+
+   One blanket override so every animation added above is covered automatically
+   and no future rule has to remember to opt in.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

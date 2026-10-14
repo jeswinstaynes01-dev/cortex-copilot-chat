@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend (JDK 17)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: copilot-dashboard/backend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      # No Copilot CLI or sign-in on the runner: the tests mock the SDK, and the runtime starts lazily.
+      - name: Build and run the unit tests
+        run: mvn -B -ntp verify
+
+  ui:
+    name: UI (Node 22)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cortex-chat
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cortex-chat/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - name: Type-check and build
+        run: npm run build

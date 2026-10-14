@@ -1,0 +1,12 @@
+{
+  /* The unit tests get a program of their own. Vitest only strips types, so
+     without this nothing would ever check them; and keeping them out of
+     tsconfig.app.json means the app is type-checked exactly as it ships,
+     with no test-only module (vitest, react-dom/server) in its program. */
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo"
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "exclude": []
+}

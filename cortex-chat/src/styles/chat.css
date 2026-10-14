@@ -1,0 +1,1359 @@
+/* ==========================================================================
+   CHAT — orb, welcome state, suggestion cards, messages, composer.
+   ========================================================================== */
+
+/* ---- 1. The orb ---------------------------------------------------------
+   Five stacked layers, no images and no canvas:
+     __glow   soft coloured halo bleeding outside the silhouette
+     __body   the sphere itself; an off-centre radial gradient does the
+              shading, and two inset shadows give it thickness
+     __ring   a rotating caustic — the bright arc light makes inside glass
+     __core   a blurred white blob drifting around within the sphere
+     __spec   the small hard specular dot
+
+   The wobble comes from animating `border-radius` with eight values. The
+   slash splits horizontal radii from vertical radii, so each corner gets an
+   ellipse rather than a circle — that asymmetry is what reads as "liquid"
+   instead of "a circle changing size".
+   ------------------------------------------------------------------------ */
+.orb {
+  position: relative;
+  width: clamp(104px, 10.5vw, 140px);
+  aspect-ratio: 1;
+  flex: none;
+  isolation: isolate;
+  /* The breath. Scaling the wrapper scales the halo with it, so the whole
+     thing swells as one object instead of a ball inside a fixed ring. */
+  animation: orb-breathe 5.5s var(--ease-in-out) infinite;
+}
+
+.orb__glow {
+  position: absolute;
+  inset: -30%;
+  /* `closest-side` pins the gradient's radius to half the box width, so the
+     fade finishes exactly at the edge. The previous version used the default
+     (`farthest-corner`) with a `transparent 70%` stop placed off-centre —
+     the colour therefore ran out well inside the box and left a visible
+     off-centre disc rim. Four low-alpha stops do the rest: a halo needs a
+     long tail, not a short one, or you can see where it stops. */
+  background: radial-gradient(
+    closest-side circle at 50% 50%,
+    rgba(240, 24, 56, 0.3) 0%,
+    rgba(244, 62, 88, 0.19) 34%,
+    rgba(248, 112, 132, 0.095) 56%,
+    rgba(252, 160, 174, 0.035) 74%,
+    rgba(255, 185, 195, 0) 100%
+  );
+  /* Deliberately out of step with the 5.5s breath, so the halo lags the body
+     and the two drift in and out of phase instead of pumping in lockstep. */
+  animation: orb-pulse 7.3s var(--ease-in-out) infinite;
+}
+
+.orb__body {
+  position: absolute;
+  inset: 0;
+  /* THE BASE SHAPE MUST LIVE HERE, not only in the keyframes.
+     `orb-morph` overrides this every frame while it runs — but if the
+     animation is ever switched off (reduced motion, a paused tab, an older
+     engine) an element with no `border-radius` of its own falls back to a
+     hard-edged square. Shape is structure; animation only decorates it. */
+  border-radius: 58% 42% 45% 55% / 48% 57% 43% 52%;
+  /* Light source at 72%/22%. The white specular is kept deliberately TIGHT —
+     earlier it ran to 34% of the radius and swallowed the body, leaving red
+     only on the rim, which read as a pale pink bubble. The stops now reach
+     saturated rose by 40% so the orb is a red flower with a highlight on it,
+     not a white ball with a red edge. */
+  background: radial-gradient(
+    116% 116% at 72% 22%,
+    #ffffff 0%,
+    #fff0f1 9%,
+    #ffc4ca 21%,
+    #fb8d9b 38%,
+    #f1546c 56%,
+    #dc1b3c 78%,
+    #9c0e24 100%
+  );
+  box-shadow: inset -6px -8px 20px rgba(150, 8, 30, 0.42),
+    inset 8px 10px 22px rgba(255, 255, 255, 0.9),
+    0 18px 38px -18px rgba(190, 10, 38, 0.44);
+  animation: orb-morph var(--orb-morph) var(--ease-in-out) infinite;
+}
+
+/* Everything from here down is clipped to the blob's silhouette.
+
+   The caustics are circles (their shape comes from a radial *mask*, and masks
+   do not follow `border-radius`). Now that the body deviates by up to twelve
+   points from a circle, a circular arc would poke out through the flat parts
+   of the blob. This wrapper carries the identical morph animation — same
+   keyframes, same duration, same easing, started on the same tick — so it is
+   always exactly the body's shape, and `overflow: hidden` trims anything that
+   would otherwise escape. */
+.orb__inner {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 58% 42% 45% 55% / 48% 57% 43% 52%;
+  animation: orb-morph var(--orb-morph) var(--ease-in-out) infinite;
+}
+
+.orb__ring {
+  position: absolute;
+  inset: 2%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 200deg,
+    transparent 0 9%,
+    rgba(255, 255, 255, 1) 19%,
+    rgba(255, 255, 255, 0.35) 29%,
+    transparent 35% 65%,
+    rgba(255, 255, 255, 0.92) 79%,
+    transparent 89%
+  );
+  /* Paints the cone into a thin band near the rim instead of a filled disc:
+     the mask is transparent in the middle and opaque only between 77% and
+     95% of the radius. */
+  -webkit-mask: radial-gradient(
+    circle,
+    transparent 66%,
+    #000 77%,
+    #000 95%,
+    transparent 100%
+  );
+  mask: radial-gradient(
+    circle,
+    transparent 66%,
+    #000 77%,
+    #000 95%,
+    transparent 100%
+  );
+  filter: blur(1.6px);
+  animation: orb-spin 13s linear infinite;
+}
+
+/* A second, slower caustic running the other way. Two arcs crossing at
+   different speeds is what stops the rim light reading as a single spinning
+   object — it starts to look like light refracting instead. */
+.orb__ring2 {
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 20deg,
+    transparent 0 12%,
+    rgba(255, 224, 226, 0.88) 22%,
+    transparent 32% 72%,
+    rgba(255, 255, 255, 0.5) 84%,
+    transparent 92%
+  );
+  -webkit-mask: radial-gradient(circle, transparent 70%, #000 82%, transparent 98%);
+  mask: radial-gradient(circle, transparent 70%, #000 82%, transparent 98%);
+  filter: blur(2.6px);
+  animation: orb-spin-rev 21s linear infinite;
+}
+
+.orb__core {
+  position: absolute;
+  inset: 19% 26% 37% 26%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 50% 42%,
+    rgba(255, 255, 255, 0.95),
+    rgba(255, 255, 255, 0.4) 52%,
+    transparent 74%
+  );
+  filter: blur(5px);
+  animation: orb-drift 10s var(--ease-in-out) infinite;
+}
+
+.orb__spec {
+  position: absolute;
+  left: 27%;
+  top: 18%;
+  width: 16%;
+  height: 11%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 1), transparent 72%);
+  filter: blur(2px);
+  animation: orb-spec 10s var(--ease-in-out) infinite;
+}
+
+/* Thinking state: everything speeds up and the halo burns brighter. */
+.orb--busy .orb__ring {
+  animation-duration: 2.6s;
+}
+.orb--busy .orb__ring2 {
+  animation-duration: 4.2s;
+}
+.orb--busy .orb__glow {
+  animation-duration: 1.5s;
+}
+.orb--busy .orb__body,
+.orb--busy .orb__inner {
+  animation-duration: 5s;
+}
+.orb--busy .orb__core {
+  animation-duration: 3.4s;
+}
+.orb--busy {
+  animation-duration: 2.2s;
+}
+
+/* The breath: a slow swell on a roughly human rhythm, ~5.5s per cycle.
+   `translateY` and `scale` ride together so it lifts slightly as it fills. */
+@keyframes orb-breathe {
+  0%,
+  100% {
+    transform: translateY(2px) scale(0.962);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.042);
+  }
+}
+
+/* Scale only — used under reduced motion, where nothing may travel. */
+@keyframes orb-breathe-still {
+  0%,
+  100% {
+    transform: scale(0.972);
+  }
+  50% {
+    transform: scale(1.032);
+  }
+}
+
+/* The wobble.
+
+   Eight values per step. Before the slash are the four HORIZONTAL radii
+   (top-left, top-right, bottom-right, bottom-left); after it are the four
+   VERTICAL radii in the same order. Every corner is therefore an ellipse,
+   and nothing is symmetric with anything else — which is the whole point.
+
+   Each pair that shares an edge sums to exactly 100%, because if the two
+   radii along one edge add up to more than the edge length the browser
+   silently scales ALL of them down to fit, and the shape you wrote is not
+   the shape you get. Keeping every pair at 100% also means the blob stays
+   tangent to all four sides, so it never visibly shrinks inside its box.
+
+   Deviation is up to ±12 points. The earlier ±5 was arithmetically a wobble
+   and visually a circle. */
+@keyframes orb-morph {
+  0%,
+  100% {
+    border-radius: 58% 42% 45% 55% / 48% 57% 43% 52%;
+  }
+  20% {
+    border-radius: 44% 56% 60% 40% / 56% 44% 56% 44%;
+  }
+  40% {
+    border-radius: 52% 48% 38% 62% / 42% 60% 40% 58%;
+  }
+  60% {
+    border-radius: 62% 38% 52% 48% / 58% 42% 58% 42%;
+  }
+  80% {
+    border-radius: 40% 60% 48% 52% / 50% 46% 54% 50%;
+  }
+}
+
+@keyframes orb-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes orb-spin-rev {
+  to {
+    transform: rotate(-1turn);
+  }
+}
+
+@keyframes orb-drift {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(6%, -4%) scale(1.06);
+  }
+  66% {
+    transform: translate(-5%, 5%) scale(0.96);
+  }
+}
+
+@keyframes orb-spec {
+  0%,
+  100% {
+    transform: translate(0, 0);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translate(14%, 8%);
+    opacity: 0.55;
+  }
+}
+
+@keyframes orb-pulse {
+  0%,
+  100% {
+    opacity: 0.66;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+/* ---- 2. Welcome state --------------------------------------------------- */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: clamp(8px, 2vh, 28px) 0 0;
+}
+
+.welcome__greet {
+  margin-top: 12px;
+  font-size: clamp(26px, 3.2vw, 36px);
+  font-weight: 620;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  background: linear-gradient(
+    96deg,
+    var(--accent-deep) 0%,
+    var(--accent) 38%,
+    #ef2d47 70%,
+    #ff5b6e 100%
+  );
+  background-size: 180% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  /* Both are required. `color` covers standards-mode engines, the -webkit-
+     property is what actually wins in Blink and WebKit. */
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: greet-shimmer 7s var(--ease-in-out) infinite;
+}
+
+@keyframes greet-shimmer {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.welcome__ask {
+  font-size: clamp(22px, 2.8vw, 31px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* ---- 3. Suggestion cards ------------------------------------------------
+   These sit BELOW the composer, matching the reference layout.             */
+.suggest-wrap {
+  width: min(100%, var(--content-max));
+  margin-inline: auto;
+  padding: 12px clamp(14px, 3vw, 28px) 0;
+  flex: none;
+}
+
+.suggestions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 15px 15px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--sh-sm);
+  text-align: left;
+  transition: transform var(--t-mid) var(--ease-spring),
+    box-shadow var(--t-mid) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out),
+    background var(--t-fast) var(--ease-out);
+  animation: card-in var(--t-slow) var(--ease-out) both;
+  /* Each card waits a little longer than the last, so they arrive in sequence
+     rather than all at once. Set per-card from the markup. */
+  animation-delay: calc(var(--i, 0) * 70ms + 180ms);
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  border-color: var(--tint-300);
+  background: var(--tint-50);
+  box-shadow: var(--sh-lg);
+}
+
+.card:active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+.card__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--tint-100);
+  color: var(--accent-ink);
+  transition: background var(--t-fast) var(--ease-out),
+    transform var(--t-mid) var(--ease-spring);
+}
+
+.card:hover .card__icon {
+  background: var(--tint-200);
+  transform: scale(1.08) rotate(-4deg);
+}
+
+.card__title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.card__body {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-4);
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+/* ---- 4. Conversation ---------------------------------------------------- */
+.thread {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.thread__inner {
+  width: min(100%, var(--content-max));
+  margin-inline: auto;
+  padding: 4px clamp(14px, 3vw, 28px) 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* The welcome block is vertically centred; a running conversation is not. */
+.thread--empty .thread__inner {
+  margin-block: auto;
+  gap: 14px;
+}
+
+.msg {
+  display: flex;
+  gap: 11px;
+  animation: msg-in 380ms var(--ease-out) both;
+}
+
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.msg--user {
+  justify-content: flex-end;
+}
+
+.msg--user .msg__bubble {
+  max-width: 78%;
+  padding: 10px 14px;
+  border-radius: var(--r-lg) var(--r-lg) 5px var(--r-lg);
+  background: linear-gradient(145deg, var(--tint-100), var(--tint-200));
+  border: 1px solid var(--tint-300);
+  color: var(--ink);
+  box-shadow: var(--sh-sm);
+}
+
+.msg__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex: none;
+  margin-top: 2px;
+  background: radial-gradient(
+    120% 120% at 68% 26%,
+    #ffffff 0%,
+    #ffc9ce 24%,
+    #f0536b 56%,
+    var(--accent-deep) 100%
+  );
+  box-shadow: inset -2px -3px 6px rgba(226, 40, 66, 0.5),
+    inset 2px 3px 6px rgba(255, 255, 255, 0.9), 0 2px 6px rgba(194, 16, 46, 0.24);
+}
+
+.msg--assistant .msg__bubble {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.msg__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The block caret that trails streaming text. `vertical-align: -2px` nudges it
+   onto the baseline; without it the bar floats above the text. */
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 2px;
+  vertical-align: -2px;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: blink 1s steps(2, start) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---- Rendered markdown -------------------------------------------------- */
+/* Specificity trap: `.md p { margin: 0 }` is (0,1,1) and would beat a
+   (0,1,0) sibling rule, silently removing the gap. Resetting through the
+   universal selector keeps both rules at (0,1,0), so the later one wins. */
+.md > * {
+  margin: 0;
+}
+
+.md > * + * {
+  margin-top: 13px;
+}
+
+.md p {
+  overflow-wrap: anywhere;
+}
+
+.md strong {
+  font-weight: 620;
+  color: var(--ink);
+}
+
+.md em {
+  font-style: italic;
+}
+
+.md code {
+  padding: 1.5px 5px;
+  border-radius: 5px;
+  background: var(--tint-100);
+  border: 1px solid var(--tint-200);
+  color: var(--accent-ink-strong);
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 0.875em;
+}
+
+.md h3,
+.md h4,
+.md h5 {
+  font-weight: 620;
+  color: var(--ink);
+  letter-spacing: -0.015em;
+}
+
+.md h3 {
+  font-size: 1.16em;
+}
+.md h4 {
+  font-size: 1.07em;
+}
+.md h5 {
+  font-size: 1em;
+}
+
+.md ul,
+.md ol {
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.md li::marker {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---- Code blocks --------------------------------------------------------
+   Long lines scroll sideways inside the block rather than wrapping: wrapped
+   code lies about where its lines break. The bubble's `min-width: 0` is what
+   lets `overflow-x` work here instead of the listing widening the page.   */
+.codeblock {
+  border-radius: var(--r-md);
+  background: var(--code-bg);
+  color: var(--code-ink);
+  box-shadow: var(--sh-sm);
+  overflow: hidden;
+}
+
+.codeblock__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 5px 4px 13px;
+  background: var(--code-head);
+  border-bottom: 1px solid var(--code-line);
+}
+
+.codeblock__lang {
+  color: var(--code-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.codeblock__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  color: var(--code-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  transition: background var(--t-fast) var(--ease-out), color var(--t-fast) var(--ease-out);
+}
+
+.codeblock__copy:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--code-ink);
+}
+
+.codeblock__copy:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* The ring sits inside the box: `.codeblock` clips its corners, and an
+   outside ring would be cut off along with them. */
+.codeblock__copy:focus-visible,
+.codeblock__pre:focus-visible {
+  outline: 2px solid var(--code-keyword);
+  outline-offset: -2px;
+}
+
+.codeblock__pre {
+  margin: 0;
+  padding: 11px 14px 12px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  /* Cascadia Code draws `=>` as an arrow and `...` as an ellipsis. Code that
+     is there to be copied should show the characters Copy will hand over. */
+  font-variant-ligatures: none;
+  white-space: pre;
+  tab-size: 2;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+/* `.md code` dresses inline code as a pill. Inside a block that pill would
+   wrap every line, so the block's own <code> takes it all back off. */
+.md .codeblock code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+.tok--comment {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.tok--string {
+  color: var(--code-string);
+}
+
+.tok--number {
+  color: var(--code-number);
+}
+
+.tok--keyword {
+  color: var(--code-keyword);
+}
+
+/* ---- Reasoning disclosure ----------------------------------------------
+   Collapsed by default. The agent's thinking is long and repetitive and
+   almost never what you came for, but when a reply is wrong it is the only
+   thing that explains why — so it has to be one click away, not absent.  */
+.reason {
+  margin-bottom: 9px;
+}
+
+.reason__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: var(--tint-50);
+  border: 1px dashed var(--tint-300);
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 550;
+  transition: background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out);
+}
+
+.reason__toggle:hover {
+  background: var(--tint-100);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.reason__body {
+  margin-top: 7px;
+  padding: 10px 12px;
+  max-height: 260px;
+  overflow-y: auto;
+  border-radius: var(--r-md);
+  border-left: 3px solid var(--tint-300);
+  background: var(--tint-50);
+  color: var(--ink-3);
+  font-size: 12.5px;
+  line-height: 1.6;
+  /* The runtime emits thinking as plain text with meaningful newlines, so it
+     is NOT rendered as markdown — `pre-wrap` keeps those breaks while still
+     wrapping long lines. */
+  white-space: pre-wrap;
+  animation: reveal 220ms var(--ease-out) both;
+}
+
+/* The honest stand-in for a reasoning panel that has nothing to show. Muted
+   and inline rather than boxed, so it reads as a footnote about the model
+   rather than as part of the answer. */
+.reason__none {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  color: var(--ink-4);
+  font-size: 12px;
+  animation: reveal 220ms var(--ease-out) both;
+}
+
+.reason__none svg {
+  flex: none;
+  opacity: 0.7;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* ---- Tool-call chips ----------------------------------------------------
+   One per tool the agent ran. `data-status` carries the state, so the colour
+   and the icon are driven by the same attribute instead of a class the TSX
+   has to remember to keep in sync.                                        */
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 9px;
+}
+
+.toolchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 5px 11px 5px 8px;
+  border-radius: var(--r-pill);
+  background: var(--tint-50);
+  border: 1px solid var(--tint-200);
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--accent-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: msg-in 300ms var(--ease-out) both;
+  transition: background var(--t-mid) var(--ease-out),
+    border-color var(--t-mid) var(--ease-out),
+    color var(--t-mid) var(--ease-out);
+}
+
+.toolchip[data-status="running"] {
+  border-color: var(--accent);
+  background: var(--tint-100);
+}
+
+.toolchip[data-status="done"] {
+  color: #15733a;
+  border-color: rgba(21, 163, 74, 0.35);
+  background: rgba(21, 163, 74, 0.08);
+}
+
+.toolchip[data-status="failed"] {
+  color: #fff;
+  background: var(--accent-ink-strong);
+  border-color: var(--accent-ink-strong);
+}
+
+.toolchip__spin {
+  animation: orb-spin 1.1s linear infinite;
+  flex: none;
+}
+
+/* ---- Permission request ------------------------------------------------
+   The agent is BLOCKED while this is on screen — the backend holds the turn
+   open and gives up after permissionTimeoutSeconds (600). It is the one
+   element in the app allowed to shout.                                    */
+.perm {
+  margin-bottom: 10px;
+  padding: 12px 13px;
+  border-radius: var(--r-lg);
+  background: var(--tint-50);
+  border: 1px solid var(--accent);
+  box-shadow: 0 0 0 4px rgba(227, 16, 47, 0.1), var(--sh-md);
+  animation: perm-in 320ms var(--ease-spring) both;
+}
+
+@keyframes perm-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+.perm__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.perm__icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: linear-gradient(145deg, var(--accent-hot), var(--accent-deep));
+  color: #fff;
+  flex: none;
+}
+
+.perm__title {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--accent-ink-strong);
+}
+
+.perm__kind {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--tint-200);
+  color: var(--accent-ink);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* `pre` defaults to `white-space: pre`, which would force the bubble wide
+   enough to fit the longest command. `pre-wrap` keeps the newlines but lets
+   it wrap; `overflow-wrap` handles a single unbroken path or URL. */
+.perm__detail,
+.perm__raw {
+  margin-top: 9px;
+  padding: 9px 11px;
+  border-radius: var(--r-md);
+  background: var(--ink);
+  color: #f6e7e9;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.perm__raw {
+  max-height: 220px;
+  overflow: auto;
+  font-size: 11.5px;
+}
+
+.perm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+/* ---- Inline notice ------------------------------------------------------
+   For a turn that ended abnormally: aborted, errored, or timed out.      */
+.msg__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 9px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--tint-100);
+  color: var(--accent-ink-strong);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.msg__notice svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+/* ---- Typing dots -------------------------------------------------------- */
+.typing {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+}
+
+.typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tint-400);
+  animation: bob 1.1s var(--ease-in-out) infinite;
+}
+
+.typing span:nth-child(2) {
+  animation-delay: 0.14s;
+}
+.typing span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+
+@keyframes bob {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    background: var(--tint-400);
+  }
+  30% {
+    transform: translateY(-5px);
+    background: var(--accent);
+  }
+}
+
+/* ---- Message actions ---------------------------------------------------- */
+.msg__tools {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease-out);
+}
+
+.msg:hover .msg__tools,
+.msg:focus-within .msg__tools {
+  opacity: 1;
+}
+
+.msg__tools .iconbtn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+}
+
+/* ---- 5. Composer -------------------------------------------------------- */
+.composer-wrap {
+  position: relative;
+  width: min(100%, var(--content-max));
+  margin-inline: auto;
+  padding: 0 clamp(14px, 3vw, 28px);
+  flex: none;
+}
+
+/* ---- 5a. Command palette -----------------------------------------------
+   Absolutely positioned above the composer rather than stacked in flow, so
+   opening it never moves the textarea out from under the cursor. `bottom:
+   100%` anchors it to the composer's top edge, which keeps the list growing
+   upwards into empty space instead of pushing the page around. */
+.palette {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: clamp(14px, 3vw, 28px);
+  right: clamp(14px, 3vw, 28px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  max-height: min(46vh, 380px);
+  padding: 6px;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--sh-lg);
+  transform-origin: bottom center;
+  animation: palette-in 160ms var(--ease-spring) both;
+}
+
+/* Only the rows scroll. The header says which command you are inside and the
+   footer says which keys work — scrolling either one out of view would hide
+   the two things a first-time user is actually reading. */
+.palette__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.palette__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 6px 10px 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+/* The "/model" breadcrumb, so the second stage never leaves you wondering
+   which command you are inside. */
+.palette__crumb {
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  background: var(--tint-100);
+  color: var(--accent-ink);
+  font-family: var(--font-mono);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.palette__row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: var(--ink-2);
+  transition: background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out);
+}
+
+/* Highlight follows the keyboard, and hover simply moves the keyboard
+   selection — so there is only ever ONE highlighted row. Styling hover
+   separately would let the mouse and the arrow keys disagree about what
+   Enter is about to do. */
+.palette__row[data-active="true"] {
+  background: var(--tint-100);
+  color: var(--accent-ink);
+}
+
+.palette__row[data-disabled="true"] {
+  color: var(--ink-4);
+  cursor: not-allowed;
+}
+
+/* The value currently in force. Weight rather than colour, because the
+   highlight already owns colour and two signals competing in the same
+   channel would make neither readable. */
+.palette__row[data-checked="true"] .palette__name {
+  color: var(--accent-ink);
+}
+
+.palette__row[data-disabled="true"][data-active="true"] {
+  background: var(--tint-100);
+  color: var(--ink-4);
+}
+
+.palette__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.palette__hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  font-size: 12.5px;
+  color: var(--ink-4);
+}
+
+.palette__row[data-active="true"] .palette__hint {
+  color: var(--ink-3);
+}
+
+.palette__empty {
+  padding: 12px 10px;
+  font-size: 13px;
+  color: var(--ink-4);
+}
+
+.palette__foot {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 7px 10px 3px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--ink-4);
+}
+
+.palette__foot kbd {
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--tint-100);
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.palette__foot kbd + kbd {
+  margin-left: -2px;
+}
+
+.palette--confirm {
+  padding: 14px;
+}
+
+.palette__confirm-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.palette__confirm-body {
+  margin: 6px 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+.palette__confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* The palette is a response to a keystroke, so it must never be one of the
+   things that goes quiet when the machine is struggling. */
+:root[data-perf="low"] .palette {
+  animation-duration: 90ms;
+}
+
+.composer {
+  border-radius: var(--r-xl);
+  border: 1px solid var(--tint-300);
+  background: var(--surface);
+  box-shadow: var(--sh-lg);
+  overflow: hidden;
+  transition: border-color var(--t-mid) var(--ease-out),
+    box-shadow var(--t-mid) var(--ease-out);
+}
+
+.composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--sh-lg), 0 0 0 4px rgba(227, 16, 47, 0.13);
+}
+
+.composer__field {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  max-height: 184px;
+  padding: 15px 16px 4px;
+  border: 0;
+  background: none;
+  outline: none;
+  resize: none;
+  /* Must not drop below 16px or iOS Safari zooms the whole page on focus. */
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.composer__field::placeholder {
+  color: var(--ink-4);
+}
+
+.composer__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 10px;
+}
+
+.composer__spacer {
+  flex: 1;
+}
+
+/* Deeper Research toggle */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 13px 0 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 550;
+  /* Without this the two-word label wraps on narrow screens and drags the
+     whole composer row to double height. */
+  white-space: nowrap;
+  color: var(--ink-3);
+  transition: background var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-spring);
+}
+
+.toggle:hover {
+  border-color: var(--tint-300);
+  color: var(--accent-ink);
+}
+
+.toggle:active {
+  transform: scale(0.96);
+}
+
+.toggle[aria-pressed="true"] {
+  background: var(--tint-100);
+  border-color: var(--tint-400);
+  color: var(--accent-ink);
+}
+
+.toggle[aria-pressed="true"] svg {
+  animation: orb-spin 9s linear infinite;
+}
+
+/* A segmented cluster of plain icon buttons sharing one tinted container. */
+.cluster {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.cluster .iconbtn {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+}
+
+/* Send / mic button */
+.send {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(150deg, var(--accent-hot), var(--accent-deep));
+  box-shadow: 0 0 0 4px rgba(227, 16, 47, 0.15), var(--sh-accent);
+  flex: none;
+  transition: transform var(--t-fast) var(--ease-spring),
+    box-shadow var(--t-mid) var(--ease-out), filter var(--t-fast) var(--ease-out);
+}
+
+.send:hover {
+  transform: scale(1.07);
+  box-shadow: 0 0 0 6px rgba(227, 16, 47, 0.18), var(--sh-accent);
+}
+
+.send:active {
+  transform: scale(0.93);
+}
+
+.send:disabled {
+  cursor: default;
+  filter: grayscale(0.55);
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+.send:disabled:hover {
+  transform: none;
+}
+
+/* The composer footer strip is gone along with the controls that lived in it
+   ("Saved prompts" and "Attach file"), neither of which had anything behind
+   the click. Everything the composer still offers is in `.composer__row`. */
+
+.composer__hint {
+  padding: 7px 2px 0;
+  font-size: 12px;
+  color: var(--ink-5);
+  text-align: center;
+  min-height: 25px;
+  /* Reserved space stays constant; only the ink fades, so nothing below the
+     composer shifts when the hint appears. */
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity var(--t-mid) var(--ease-out), transform var(--t-mid) var(--ease-out);
+}
+
+.composer__hint[data-show="true"] {
+  opacity: 1;
+  transform: none;
+}
+
+/* A confirmation, e.g. after `/save`. Darker than the standing hint because
+   it is news rather than a reminder, and it only stays for a moment. */
+.composer__hint[data-notice="true"] {
+  color: var(--accent-ink);
+  font-weight: 550;
+}

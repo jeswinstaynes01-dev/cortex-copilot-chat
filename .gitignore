@@ -1,0 +1,20 @@
+# Dependencies and build output
+node_modules/
+dist/
+target/
+
+# Local test output
+shots/
+*.log
+
+# Editors and OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Secrets: provider keys come from environment variables, never from files
+.env
+.env.*
+!.env.example
