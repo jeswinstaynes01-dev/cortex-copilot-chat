@@ -54,6 +54,32 @@ public class CopilotProperties {
     /** Persona id applied when the browser does not ask for one. Blank means none. */
     private String defaultPersona;
 
+    /**
+     * Load the user's own customisations into every session, as the terminal CLI does: custom
+     * agents and skills from {@code ~/.copilot}, and instruction files, agents and skills from the
+     * working directory's repository. Off means a bare session with built-in commands only.
+     */
+    private boolean configDiscovery = true;
+
+    /** Which of the runtime's slash commands the browser may run, and which need a confirmation. */
+    private Commands commands = new Commands();
+
+    public boolean isConfigDiscovery() {
+        return configDiscovery;
+    }
+
+    public void setConfigDiscovery(boolean configDiscovery) {
+        this.configDiscovery = configDiscovery;
+    }
+
+    public Commands getCommands() {
+        return commands;
+    }
+
+    public void setCommands(Commands commands) {
+        this.commands = commands == null ? new Commands() : commands;
+    }
+
     public Provider getProvider() {
         return provider;
     }
@@ -326,6 +352,44 @@ public class CopilotProperties {
 
         public void setTimeout(Integer timeout) {
             this.timeout = timeout;
+        }
+    }
+
+    /**
+     * Slash-command policy. Names match a command's name or any of its aliases, case-insensitively,
+     * so {@code yolo} and {@code allow-all} are the same entry.
+     */
+    public static class Commands {
+
+        /**
+         * Never offered and refused if called. Cortex has its own control for each of these, and
+         * the runtime's version would change the session behind Cortex's back — a model switch the
+         * model menu does not show, or an allow-all that skips Cortex's approval prompts.
+         */
+        private List<String> hidden = new ArrayList<>(List.of("model", "cwd", "allow-all", "permissions"));
+
+        /**
+         * Run only after the user confirms. These hand the agent more autonomy (autopilot, fleet,
+         * scheduled prompts), widen what it can touch (add-dir, computer), or reach outside this
+         * machine (share, remote, plugin).
+         */
+        private List<String> confirm = new ArrayList<>(List.of(
+                "add-dir", "autopilot", "fleet", "every", "after", "plugin", "share", "remote", "computer"));
+
+        public List<String> getHidden() {
+            return hidden;
+        }
+
+        public void setHidden(List<String> hidden) {
+            this.hidden = hidden == null ? new ArrayList<>() : hidden;
+        }
+
+        public List<String> getConfirm() {
+            return confirm;
+        }
+
+        public void setConfirm(List<String> confirm) {
+            this.confirm = confirm == null ? new ArrayList<>() : confirm;
         }
     }
 

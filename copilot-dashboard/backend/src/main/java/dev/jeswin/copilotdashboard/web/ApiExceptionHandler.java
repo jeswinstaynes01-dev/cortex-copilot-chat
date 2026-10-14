@@ -20,6 +20,18 @@ public class ApiExceptionHandler {
         return body(HttpStatus.GONE, ex);
     }
 
+    @ExceptionHandler(SessionService.PlanReviewNotFoundException.class)
+    public ResponseEntity<Map<String, String>> planReviewGone(RuntimeException ex) {
+        return body(HttpStatus.GONE, ex);
+    }
+
+    /** 428: allowed, but resend with {@code confirmed: true} once the user has agreed. */
+    @ExceptionHandler(SessionService.ConfirmationRequiredException.class)
+    public ResponseEntity<Map<String, Object>> confirmationRequired(RuntimeException ex) {
+        return ResponseEntity.status(HttpStatus.PRECONDITION_REQUIRED)
+                .body(Map.of("error", String.valueOf(ex.getMessage()), "confirm", true));
+    }
+
     @ExceptionHandler(SessionService.SessionBusyException.class)
     public ResponseEntity<Map<String, String>> busy(RuntimeException ex) {
         return body(HttpStatus.CONFLICT, ex);

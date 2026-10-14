@@ -4,6 +4,7 @@ import dev.jeswin.copilotdashboard.copilot.SessionService;
 import jakarta.validation.Valid;
 import dev.jeswin.copilotdashboard.web.dto.CreateSessionRequest;
 import dev.jeswin.copilotdashboard.web.dto.PermissionDecisionRequest;
+import dev.jeswin.copilotdashboard.web.dto.PlanReviewDecisionRequest;
 import dev.jeswin.copilotdashboard.web.dto.SendMessageRequest;
 import dev.jeswin.copilotdashboard.web.dto.SessionSummary;
 import java.util.List;
@@ -78,6 +79,14 @@ public class SessionController {
     public ResponseEntity<Void> decidePermission(@PathVariable String id, @PathVariable String requestId,
             @Valid @RequestBody PermissionDecisionRequest request) {
         sessionService.resolvePermission(id, requestId, request.decision(), request.feedback());
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/plan-reviews/{reviewId}")
+    public ResponseEntity<Void> decidePlanReview(@PathVariable String id, @PathVariable String reviewId,
+            @Valid @RequestBody PlanReviewDecisionRequest request) {
+        sessionService.resolvePlanReview(id, reviewId, request.approved(), request.action(),
+                request.feedback(), Boolean.TRUE.equals(request.confirmed()));
         return ResponseEntity.noContent().build();
     }
 }

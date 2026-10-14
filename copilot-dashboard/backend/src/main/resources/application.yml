@@ -30,6 +30,19 @@ copilot:
     - http://localhost:5173
     - http://127.0.0.1:5173
 
+  # Load your own custom agents, skills and instruction files into every chat, like the terminal
+  # CLI does: ~/.copilot/agents and skills, plus the working directory's .github instructions,
+  # agents and skills. Set false for bare sessions with built-in commands only.
+  config-discovery: true
+
+  # The CLI's slash commands in the chat box. Entries match a command or any of its aliases.
+  commands:
+    # Never offered: Cortex has its own control for these (model menu, folder picker, approvals),
+    # and the runtime's would change the session behind its back.
+    hidden: [model, cwd, allow-all, permissions]
+    # Ask before running: more autonomy, wider file access, or reaching outside this machine.
+    confirm: [add-dir, autopilot, fleet, every, after, plugin, share, remote, computer]
+
   # Bring your own model: the listed models are served by your own endpoint with your own key,
   # alongside (or instead of) GitHub Copilot. They need no Copilot sign-in and use no premium
   # quota. The key is read from the environment variable named by api-key-env and is never stored

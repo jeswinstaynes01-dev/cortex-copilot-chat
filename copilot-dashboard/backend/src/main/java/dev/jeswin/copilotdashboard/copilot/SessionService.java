@@ -2,9 +2,12 @@ package dev.jeswin.copilotdashboard.copilot;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.copilot.CopilotSession;
 import com.github.copilot.generated.SessionEvent;
+import com.github.copilot.rpc.ExitPlanModeHandler;
+import com.github.copilot.rpc.ExitPlanModeResult;
 import com.github.copilot.rpc.MessageOptions;
 import com.github.copilot.rpc.ModelBilling;
 import com.github.copilot.rpc.ModelInfo;
@@ -16,10 +19,12 @@ import jakarta.annotation.PreDestroy;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -59,12 +64,26 @@ public class SessionService {
             "session.idle",
             "session.usage_info",
             "session.error",
+            "session.title_changed",
+            "session.mode_changed",
+            "session.schedule_",
+            "session.background_tasks_changed",
+            "subagent.selected",
+            "subagent.deselected",
             "abort");
+
+    /**
+     * Read for bookkeeping even when not forwarded. {@code user.message} in particular is never
+     * forwarded as-is: it carries the whole expanded prompt, which can run to tens of kilobytes.
+     */
+    private static final Set<String> TRACKED_EVENTS =
+            Set.of("user.message", "session.idle", "session.title_changed", "session.mode_changed");
 
     private final CopilotClientManager clientManager;
     private final CopilotProperties properties;
     private final ObjectMapper objectMapper;
     private final SessionConfigFactory configFactory;
+    private final CommandPolicy commandPolicy;
 
     private final Map<String, DashboardSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, Future<?>> inFlightTurns = new ConcurrentHashMap<>();
@@ -78,11 +97,12 @@ public class SessionService {
             });
 
     public SessionService(CopilotClientManager clientManager, CopilotProperties properties,
-            ObjectMapper objectMapper, SessionConfigFactory configFactory) {
+            ObjectMapper objectMapper, SessionConfigFactory configFactory, CommandPolicy commandPolicy) {
         this.clientManager = clientManager;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.configFactory = configFactory;
+        this.commandPolicy = commandPolicy;
     }
 
     // ---------------------------------------------------------------- lifecycle
@@ -100,7 +120,14 @@ public class SessionService {
                 .setModel(model)
                 .setStreaming(true)
                 .setWorkingDirectory(workingDirectory)
-                .setOnPermissionRequest(permissionHandler(dashboardId, autoApprove));
+                .setOnPermissionRequest(permissionHandler(dashboardId, autoApprove))
+                // Without a handler the runtime never offers its exit_plan_mode tool, so /plan
+                // would end in prose with no way to approve the plan and move on.
+                .setOnExitPlanMode(planReviewHandler(dashboardId));
+
+        if (properties.isConfigDiscovery()) {
+            config.setEnableConfigDiscovery(true);
+        }
 
         // Only set it when we have one. Passing null would be asking the runtime to use "no
         // effort", which is a different instruction from "you choose".
@@ -209,6 +236,7 @@ public class SessionService {
         session.getPendingPermissions().values()
                 .forEach(pending -> pending.future().complete(PermissionRequestResult.userNotAvailable()));
         session.getPendingPermissions().clear();
+        declinePlanReviews(session, "The conversation was closed before the plan was reviewed.");
         session.closeEmitters();
         try {
             session.getSession().close();
@@ -233,8 +261,15 @@ public class SessionService {
             for (PendingPermission pending : session.getPendingPermissions().values()) {
                 emitter.send(SseEmitter.event().name("copilot").data(permissionEvent(pending)));
             }
+            for (PendingPlanReview pending : session.getPendingPlanReviews().values()) {
+                emitter.send(SseEmitter.event().name("copilot").data(pending.payload()));
+            }
             ObjectNode ready = dashboardEvent("dashboard.ready");
             ready.put("busy", session.isBusy());
+            ready.put("mode", session.getMode());
+            if (session.getExternalTurn() != null) {
+                ready.put("externalTurn", session.getExternalTurn());
+            }
             emitter.send(SseEmitter.event().name("copilot").data(ready));
         } catch (Exception ex) {
             emitter.completeWithError(ex);
@@ -244,27 +279,104 @@ public class SessionService {
 
     private void onRuntimeEvent(DashboardSession session, SessionEvent event) {
         String type = event.getType();
-        if (!properties.isForwardAllEvents() && !isForwarded(type)) {
+        if (type == null) {
+            return;
+        }
+        boolean forwarded = properties.isForwardAllEvents() || isForwarded(type);
+        if (!forwarded && !TRACKED_EVENTS.contains(type)) {
             return;
         }
         try {
             // Serializing the concrete event subclass keeps every payload field the UI might want.
             JsonNode serialized = objectMapper.valueToTree(event);
             JsonNode data = serialized.get("data");
+            if (data == null) {
+                data = serialized;
+            }
 
-            // Normalise to {type, timestamp, data} so the UI has one shape for SDK and dashboard events.
-            ObjectNode envelope = dashboardEvent(type);
-            envelope.set("data", data != null ? data : serialized);
-            session.broadcast(envelope);
+            switch (type) {
+                case "user.message" -> {
+                    if (data instanceof ObjectNode node) {
+                        node.remove("transformedContent");
+                    }
+                    onUserMessage(session, event, data);
+                }
+                case "session.title_changed" -> {
+                    String title = data.path("title").asText("");
+                    if (StringUtils.hasText(title)) {
+                        session.setTitle(title);
+                    }
+                }
+                case "session.mode_changed" -> {
+                    String mode = data.path("newMode").asText("");
+                    if (StringUtils.hasText(mode)) {
+                        session.setMode(mode);
+                    }
+                }
+                default -> {
+                    // Forwarded untouched.
+                }
+            }
+
+            if (forwarded) {
+                // Normalise to {type, timestamp, data} so the UI has one shape for SDK and dashboard events.
+                ObjectNode envelope = dashboardEvent(type);
+                envelope.set("data", data);
+                session.broadcast(envelope);
+            }
+
+            if ("session.idle".equals(type)) {
+                String external = session.endExternalTurn();
+                if (external != null) {
+                    ObjectNode end = dashboardEvent("dashboard.turn_end");
+                    end.put("external", true);
+                    end.put("turnId", external);
+                    session.broadcast(end);
+                }
+            }
         } catch (RuntimeException ex) {
             log.warn("Could not serialize event {} for session {}: {}", type, session.getId(), ex.toString());
         }
     }
 
-    private boolean isForwarded(String type) {
-        if (type == null) {
-            return false;
+    /**
+     * Every prompt the runtime records — ours, and ones it sends itself. Two jobs:
+     *
+     * <p>When nothing here is running a turn, the runtime started one on its own: a scheduled
+     * prompt from {@code /every} or {@code /after} firing. The browser is told a turn began, so
+     * the reply streams into the chat instead of being dropped as noise from no turn.
+     *
+     * <p>The event id is passed on because it is what {@code /rewind} identifies a point by; the
+     * browser pins it to the message, which is how a rewind knows where to cut the transcript.
+     */
+    private void onUserMessage(DashboardSession session, SessionEvent event, JsonNode data) {
+        // Expanded prompts (a /review, say) run to pages; the browser only needs enough to match on.
+        String content = CommandService.clip(data.path("content").asText(""), 4000);
+        String source = data.path("source").asText("");
+        // A scheduled prompt only ever fires once the session is idle, so it always opens a new
+        // turn — even if our previous turn's cleanup has not yet cleared the busy flag.
+        boolean scheduled = source.startsWith("schedule");
+        if (scheduled || !session.isBusy()) {
+            String turnId = UUID.randomUUID().toString();
+            if (session.beginExternalTurn(turnId, scheduled)) {
+                ObjectNode start = dashboardEvent("dashboard.turn_start");
+                start.put("external", true);
+                start.put("turnId", turnId);
+                start.put("content", content);
+                start.put("source", source);
+                session.broadcast(start);
+            }
         }
+        ObjectNode recorded = dashboardEvent("dashboard.prompt_recorded");
+        if (event.getId() != null) {
+            recorded.put("eventId", event.getId().toString());
+        }
+        recorded.put("content", content);
+        recorded.put("source", source);
+        session.broadcast(recorded);
+    }
+
+    private boolean isForwarded(String type) {
         return FORWARDED_EVENT_PREFIXES.stream().anyMatch(type::startsWith);
     }
 
@@ -284,26 +396,84 @@ public class SessionService {
         session.broadcast(userEcho);
         session.broadcast(dashboardEvent("dashboard.turn_start"));
 
+        submitTurn(session, null, () -> sendAndWait(session, new MessageOptions().setPrompt(prompt)));
+    }
+
+    /** One unit of work run for a session on the turn thread pool. */
+    @FunctionalInterface
+    interface TurnWork {
+        void run() throws Exception;
+    }
+
+    /**
+     * Runs work for a session the caller has already marked busy, and always frees it afterwards.
+     *
+     * <p>{@code requestId} ties the closing {@code dashboard.turn_end} (and any error) to the
+     * browser request that started it. A slash command's own turn emits {@code session.idle}
+     * before its result is known, so the browser waits for the turn_end carrying its id instead.
+     */
+    void submitTurn(DashboardSession session, String requestId, TurnWork work) {
+        String sessionId = session.getId();
         Future<?> turn = turnExecutor.submit(() -> {
             try {
-                // The SDK's no-timeout overload defaults to 60s, which kills any real piece of
-                // agent work. Always pass an explicit budget.
-                long timeoutMs = Math.max(1, properties.getTurnTimeoutSeconds()) * 1000L;
-                session.getSession().sendAndWait(new MessageOptions().setPrompt(prompt), timeoutMs).get();
+                work.run();
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
             } catch (Exception ex) {
                 log.warn("Turn failed for session {}: {}", sessionId, rootMessage(ex));
                 ObjectNode error = dashboardEvent("dashboard.error");
                 error.put("message", rootMessage(ex));
+                if (requestId != null) {
+                    error.put("requestId", requestId);
+                }
                 session.broadcast(error);
             } finally {
                 session.markIdle();
                 inFlightTurns.remove(sessionId);
-                session.broadcast(dashboardEvent("dashboard.turn_end"));
+                ObjectNode end = dashboardEvent("dashboard.turn_end");
+                if (requestId != null) {
+                    end.put("requestId", requestId);
+                }
+                session.broadcast(end);
             }
         });
         inFlightTurns.put(sessionId, turn);
+    }
+
+    /**
+     * Runs a short piece of work beside a turn that is already running — a read-only command such
+     * as {@code /context} asked for mid-reply. Does not touch the busy flag, which belongs to that
+     * turn; the closing {@code turn_end} carries the request id so only its own caller reacts.
+     */
+    void submitBeside(DashboardSession session, String requestId, TurnWork work) {
+        turnExecutor.submit(() -> {
+            try {
+                work.run();
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            } catch (Exception ex) {
+                ObjectNode error = dashboardEvent("dashboard.error");
+                error.put("message", rootMessage(ex));
+                error.put("requestId", requestId);
+                session.broadcast(error);
+            } finally {
+                ObjectNode end = dashboardEvent("dashboard.turn_end");
+                end.put("requestId", requestId);
+                session.broadcast(end);
+            }
+        });
+    }
+
+    /**
+     * The SDK's no-timeout overload defaults to 60s, which kills any real piece of agent work.
+     * Always pass an explicit budget.
+     */
+    void sendAndWait(DashboardSession session, MessageOptions options) throws Exception {
+        session.getSession().sendAndWait(options, turnTimeoutMs()).get();
+    }
+
+    long turnTimeoutMs() {
+        return Math.max(1, properties.getTurnTimeoutSeconds()) * 1000L;
     }
 
     /**
@@ -312,6 +482,8 @@ public class SessionService {
      */
     public void abortTurn(String sessionId) {
         DashboardSession session = requireSession(sessionId);
+        // A plan waiting for review holds the turn open; answer it first or abort waits on it.
+        declinePlanReviews(session, "The user stopped this turn before reviewing the plan.");
         try {
             session.getSession().abort().get(15, TimeUnit.SECONDS);
         } catch (InterruptedException ex) {
@@ -324,6 +496,7 @@ public class SessionService {
             turn.cancel(true);
         }
         session.markIdle();
+        session.endExternalTurn();
         ObjectNode aborted = dashboardEvent("dashboard.aborted");
         aborted.put("message", "Turn stopped by user.");
         session.broadcast(aborted);
@@ -507,6 +680,113 @@ public class SessionService {
         pending.future().complete(result);
     }
 
+    // ---------------------------------------------------------------- plan review
+
+    /**
+     * Called by the runtime when a {@code /plan} turn has a plan ready. Parked for the user exactly
+     * like a permission request: the agent's turn waits on the answer, and silence is a refusal.
+     */
+    private ExitPlanModeHandler planReviewHandler(String dashboardId) {
+        return (request, invocation) -> {
+            DashboardSession session = sessions.get(dashboardId);
+            if (session == null) {
+                return CompletableFuture.completedFuture(new ExitPlanModeResult().setApproved(false)
+                        .setFeedback("The user is not available to review the plan. End your turn."));
+            }
+
+            String reviewId = UUID.randomUUID().toString();
+            List<String> actions = request.getActions() == null
+                    ? List.of()
+                    : request.getActions().stream().filter(StringUtils::hasText).toList();
+
+            ObjectNode payload = dashboardEvent("dashboard.plan_review_requested");
+            payload.put("reviewId", reviewId);
+            payload.put("summary", request.getSummary());
+            payload.put("planContent", request.getPlanContent());
+            ArrayNode offered = payload.putArray("actions");
+            actions.forEach(offered::add);
+            payload.put("recommendedAction", request.getRecommendedAction());
+            ArrayNode needsConfirm = payload.putArray("confirmActions");
+            actions.stream().filter(this::planActionNeedsConfirmation).forEach(needsConfirm::add);
+
+            CompletableFuture<ExitPlanModeResult> decision = new CompletableFuture<>();
+            session.getPendingPlanReviews().put(reviewId,
+                    new PendingPlanReview(reviewId, payload, actions, decision));
+            session.broadcast(payload);
+
+            long timeout = properties.getPermissionTimeoutSeconds();
+            return decision
+                    .orTimeout(timeout, TimeUnit.SECONDS)
+                    .exceptionally(ex -> {
+                        log.info("Plan review {} timed out for session {}", reviewId, dashboardId);
+                        return new ExitPlanModeResult().setApproved(false).setFeedback(
+                                "No reply from the user within " + timeout + " seconds. Do not revise or "
+                                        + "retry the plan; end your turn and wait for the user.");
+                    })
+                    .whenComplete((result, ex) -> {
+                        session.getPendingPlanReviews().remove(reviewId);
+                        ObjectNode resolved = dashboardEvent("dashboard.plan_review_resolved");
+                        resolved.put("reviewId", reviewId);
+                        resolved.put("approved", result != null && result.isApproved());
+                        if (result != null && result.getSelectedAction() != null) {
+                            resolved.put("action", result.getSelectedAction());
+                        }
+                        session.broadcast(resolved);
+                    });
+        };
+    }
+
+    /**
+     * Answers a parked plan. Approving into autopilot lets the agent carry on without asking, so it
+     * sits behind the same confirmation as typing {@code /autopilot} or {@code /fleet}.
+     */
+    public void resolvePlanReview(String sessionId, String reviewId, boolean approved, String action,
+            String feedback, boolean confirmed) {
+        DashboardSession session = requireSession(sessionId);
+        PendingPlanReview pending = session.getPendingPlanReviews().get(reviewId);
+        if (pending == null) {
+            throw new PlanReviewNotFoundException(reviewId);
+        }
+        ExitPlanModeResult result = new ExitPlanModeResult().setApproved(approved);
+        if (approved) {
+            String chosen = StringUtils.hasText(action) ? action.trim() : null;
+            if (chosen == null && !pending.actions().isEmpty()) {
+                throw new IllegalArgumentException("Choose what happens next: " + String.join(", ", pending.actions()));
+            }
+            if (chosen != null && !pending.actions().contains(chosen)) {
+                throw new IllegalArgumentException("'" + chosen + "' was not offered. Choose one of: "
+                        + String.join(", ", pending.actions()));
+            }
+            if (chosen != null && planActionNeedsConfirmation(chosen) && !confirmed) {
+                throw new ConfirmationRequiredException("Approving into " + chosen
+                        + " lets the agent keep working without asking you. Confirm to continue.");
+            }
+            result.setSelectedAction(chosen);
+        }
+        if (StringUtils.hasText(feedback)) {
+            result.setFeedback(feedback.trim());
+        }
+        if (!pending.future().complete(result)) {
+            throw new PlanReviewNotFoundException(reviewId);
+        }
+    }
+
+    boolean planActionNeedsConfirmation(String action) {
+        return switch (action) {
+            case "autopilot" -> commandPolicy.needsConfirmation("autopilot");
+            case "autopilot_fleet" -> commandPolicy.needsConfirmation("autopilot")
+                    || commandPolicy.needsConfirmation("fleet");
+            default -> false;
+        };
+    }
+
+    private void declinePlanReviews(DashboardSession session, String reason) {
+        for (PendingPlanReview pending : new ArrayList<>(session.getPendingPlanReviews().values())) {
+            pending.future().complete(new ExitPlanModeResult().setApproved(false)
+                    .setFeedback(reason + " End your turn."));
+        }
+    }
+
     // ---------------------------------------------------------------- helpers
 
     /**
@@ -540,7 +820,7 @@ public class SessionService {
         return path.toString();
     }
 
-    private ObjectNode dashboardEvent(String type) {
+    ObjectNode dashboardEvent(String type) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("type", type);
         node.put("timestamp", System.currentTimeMillis());
@@ -554,7 +834,7 @@ public class SessionService {
         return node;
     }
 
-    private static String rootMessage(Throwable ex) {
+    static String rootMessage(Throwable ex) {
         Throwable cursor = ex;
         while (cursor.getCause() != null && cursor.getCause() != cursor) {
             cursor = cursor.getCause();
@@ -580,11 +860,31 @@ public class SessionService {
         public SessionBusyException(String id) {
             super("Session " + id + " is still processing the previous message.");
         }
+
+        public SessionBusyException(String id, String message) {
+            super(message);
+        }
     }
 
     public static class PermissionNotFoundException extends RuntimeException {
         public PermissionNotFoundException(String id) {
             super("No pending permission request: " + id);
+        }
+    }
+
+    public static class PlanReviewNotFoundException extends RuntimeException {
+        public PlanReviewNotFoundException(String id) {
+            super("This plan is no longer waiting for review: " + id);
+        }
+    }
+
+    /**
+     * The request is allowed, but only once the user has explicitly agreed to it — see
+     * {@code copilot.commands.confirm}. Sent again with {@code confirmed: true}, it goes through.
+     */
+    public static class ConfirmationRequiredException extends RuntimeException {
+        public ConfirmationRequiredException(String message) {
+            super(message);
         }
     }
 }

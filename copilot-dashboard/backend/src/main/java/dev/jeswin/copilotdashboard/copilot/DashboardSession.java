@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -45,9 +46,16 @@ public class DashboardSession {
     private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
     private final Deque<JsonNode> history = new ArrayDeque<>();
     private final Map<String, PendingPermission> pendingPermissions = new ConcurrentHashMap<>();
+    private final Map<String, PendingPlanReview> pendingPlanReviews = new ConcurrentHashMap<>();
     private final AtomicBoolean busy = new AtomicBoolean(false);
+    /**
+     * Set while the runtime runs a turn nobody here asked for — a scheduled prompt firing. It
+     * counts as busy, so a message typed meanwhile is refused instead of colliding with it.
+     */
+    private final AtomicReference<String> externalTurn = new AtomicReference<>();
 
     private volatile String title;
+    private volatile String mode = "interactive";
     private volatile Instant lastActivityAt = Instant.now();
 
     public DashboardSession(String id, CopilotSession session, String model, String workingDirectory,
@@ -108,19 +116,50 @@ public class DashboardSession {
     }
 
     public boolean isBusy() {
-        return busy.get();
+        return busy.get() || externalTurn.get() != null;
     }
 
     public boolean markBusy() {
-        return busy.compareAndSet(false, true);
+        return externalTurn.get() == null && busy.compareAndSet(false, true);
     }
 
     public void markIdle() {
         busy.set(false);
     }
 
+    /**
+     * Claims the session for a turn the runtime started on its own. Normally refused while one of
+     * ours is running, since anything the runtime does then belongs to that turn; {@code evenIfBusy}
+     * is for prompts known to open a turn of their own, such as a schedule firing.
+     */
+    public boolean beginExternalTurn(String turnId, boolean evenIfBusy) {
+        return (evenIfBusy || !busy.get()) && externalTurn.compareAndSet(null, turnId);
+    }
+
+    /** Releases a runtime-started turn, returning its id, or null when none was running. */
+    public String endExternalTurn() {
+        return externalTurn.getAndSet(null);
+    }
+
+    public String getExternalTurn() {
+        return externalTurn.get();
+    }
+
+    /** The runtime's agent mode as last reported: {@code interactive}, {@code plan} or {@code autopilot}. */
+    public String getMode() {
+        return mode;
+    }
+
+    public void setMode(String mode) {
+        this.mode = mode;
+    }
+
     public Map<String, PendingPermission> getPendingPermissions() {
         return pendingPermissions;
+    }
+
+    public Map<String, PendingPlanReview> getPendingPlanReviews() {
+        return pendingPlanReviews;
     }
 
     public void touch() {
@@ -138,6 +177,16 @@ public class DashboardSession {
     public List<JsonNode> replayBuffer() {
         synchronized (history) {
             return new ArrayList<>(history);
+        }
+    }
+
+    /**
+     * Forgets buffered events. Used after a rewind: replaying events from turns the runtime has
+     * just thrown away would bring them back on the next reconnect.
+     */
+    public void clearReplayBuffer() {
+        synchronized (history) {
+            history.clear();
         }
     }
 
