@@ -33,7 +33,7 @@
  * user to finish rather than sending half a question.
  */
 
-import type { ClientSettings, Conversation, ModelOption, Persona } from "./types";
+import type { ClientSettings, Conversation, ModelOption, Persona, RuntimeCommand } from "./types";
 import type { Prompt } from "./prompts";
 import { defaultPromptName, findSavedPrompt } from "./prompts";
 import { EFFORT_DEFAULT_HINT, EFFORT_DEFAULT_LABEL, effortHint, effortLabel } from "./effort";
@@ -181,6 +181,10 @@ export interface CommandContext {
   onExport: () => void;
   onSavePrompt: (name: string, text: string) => void;
   onDeletePrompt: (id: string) => void;
+  /** The Copilot runtime's own commands (/context, /review, skills…). */
+  runtimeCommands?: RuntimeCommand[];
+  /** Sends "/name input"; the client routes it to the runtime, not the agent. */
+  onRunCommand?: (text: string) => void;
 }
 
 /** Appended to anything that drops the current agent session. The user is
@@ -190,7 +194,7 @@ const RESTARTS = "Starts a new agent session.";
 export function buildCommands(ctx: CommandContext): Command[] {
   const hasMessages = (ctx.conversation?.messages.length ?? 0) > 0;
 
-  return [
+  const natives: Command[] = [
     {
       name: "new",
       hint: "Start a fresh chat",
@@ -465,6 +469,56 @@ export function buildCommands(ctx: CommandContext): Command[] {
       run: ctx.onStop,
     },
   ];
+  return [...natives, ...runtimeEntries(ctx, natives)];
+}
+
+/* The runtime's own commands, listed after Cortex's. A native of the same name
+   wins, because it is the one wired to this UI's buttons. Each runs by sending
+   "/name input", which the client hands to the backend's command endpoint. */
+function runtimeEntries(ctx: CommandContext, natives: Command[]): Command[] {
+  const send = ctx.onRunCommand;
+  if (!send || !ctx.runtimeCommands?.length) return [];
+  const taken = new Set(natives.map((c) => c.name));
+  return ctx.runtimeCommands
+    .filter((rc) => !taken.has(rc.name))
+    .map((rc): Command => {
+      const base = {
+        name: rc.name,
+        hint: rc.description || rc.hint || "Copilot runtime command",
+        /* One reply at a time: useChat refuses to send while the agent works. */
+        disabled: ctx.busy ? "Wait for the reply to finish" : null,
+      };
+      if (rc.choices.length) {
+        return {
+          ...base,
+          options: () =>
+            rc.choices.map((c) => ({
+              value: c.name,
+              label: c.name,
+              hint: c.description ?? undefined,
+              run: () => send(`/${rc.name} ${c.name}`),
+            })),
+        };
+      }
+      if (!rc.hint) return { ...base, run: () => send(`/${rc.name}`) };
+      const hint = rc.hint;
+      return {
+        ...base,
+        optionPrompt: hint,
+        compute: (query) => {
+          const input = query.trim();
+          return [
+            {
+              value: `run:${input}`,
+              label: input ? `/${rc.name} ${input}` : `/${rc.name} ${hint}`,
+              hint: rc.description,
+              disabled: rc.required && !input ? `Type ${hint} first` : null,
+              run: () => send(input ? `/${rc.name} ${input}` : `/${rc.name}`),
+            },
+          ];
+        },
+      };
+    });
 }
 
 /** Why `/effort` cannot be used, or null if it can.

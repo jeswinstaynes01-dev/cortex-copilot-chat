@@ -14,7 +14,14 @@ import { BUILT_IN_PROMPTS, deletePrompt, loadSavedPrompts, savePrompt } from "./
 import type { Prompt } from "./lib/prompts";
 import { copyText, download, slug, toMarkdown } from "./lib/transcript";
 import { useChat } from "./lib/useChat";
-import type { ArchivedSession, Budget, Message, ModelOption, Persona } from "./lib/types";
+import type {
+  ArchivedSession,
+  Budget,
+  Message,
+  ModelOption,
+  Persona,
+  RuntimeCommand,
+} from "./lib/types";
 
 /* `?mock` swaps the real agent for the simulator. Two reasons it exists:
    screenshots and visual tweaking should not burn real model calls or wait on
@@ -128,6 +135,18 @@ export default function App() {
     };
   }, [client, connected]);
 
+  /* The runtime's own commands differ per session (skills, MCP prompts), so
+     the list is re-read whenever the session changes. */
+  const [runtimeCommands, setRuntimeCommands] = useState<RuntimeCommand[]>([]);
+  useEffect(() => {
+    if (!connected) return;
+    let live = true;
+    void client.commands().then((list) => live && setRuntimeCommands(list));
+    return () => {
+      live = false;
+    };
+  }, [client, connected, state.sessionId]);
+
   /* Saved prompts live here, not in the palette, because the palette is
      rebuilt from scratch every time it opens and the list has to survive
      that — and `/save` has to see it to say when a name will be replaced. */
@@ -159,12 +178,15 @@ export default function App() {
 
   /* Closing the drawer on send is the mobile case: the rail covers the thread,
      so leaving it open means tapping Send and seeing nothing happen. */
-  const onSend = (text: string) => {
-    setViewing(null);
-    send(text);
-    setDraft("");
-    setRailOpen(false);
-  };
+  const onSend = useCallback(
+    (text: string) => {
+      setViewing(null);
+      send(text);
+      setDraft("");
+      setRailOpen(false);
+    },
+    [send],
+  );
 
   useEffect(() => {
     if (!railOpen) return;
@@ -221,6 +243,8 @@ export default function App() {
           setSavedPrompts(deletePrompt(id));
           if (gone) setNotice(`Removed “${gone.name}”`);
         },
+        runtimeCommands,
+        onRunCommand: onSend,
       }),
     [
       busy,
@@ -237,6 +261,8 @@ export default function App() {
       openChat,
       stop,
       configure,
+      runtimeCommands,
+      onSend,
     ],
   );
 

@@ -11,6 +11,7 @@ import type {
   PermissionDecision,
   PermissionRequest,
   Persona,
+  RuntimeCommand,
   SendOptions,
   ToolCall,
   ToolStatus,
@@ -58,6 +59,22 @@ interface Envelope {
   message?: string;
   requestId?: string;
   request?: Record<string, unknown>;
+  /* dashboard.command_result, dashboard.plan_review_*, external turns. */
+  external?: boolean;
+  kind?: string;
+  text?: string;
+  markdown?: boolean;
+  title?: string;
+  command?: unknown;
+  options?: unknown;
+  error?: string;
+  url?: string;
+  notice?: string;
+  reviewId?: string;
+  summary?: string;
+  planContent?: string;
+  actions?: unknown;
+  recommendedAction?: string;
 }
 
 const rec = (v: unknown): Record<string, unknown> =>
@@ -170,6 +187,67 @@ function summarizePermission(id: string, request: Record<string, unknown>): Perm
   };
 }
 
+function parseRuntimeCommand(v: unknown): RuntimeCommand | null {
+  const c = rec(v);
+  const name = str(c.name)?.replace(/^\//, "");
+  if (!name) return null;
+  return {
+    name,
+    aliases: strList(c.aliases).map((a) => a.replace(/^\//, "")),
+    description: str(c.description) ?? "",
+    hint: str(c.hint) || null,
+    required: c.required === true,
+    choices: listOf(c.choices, (x) => {
+      const o = rec(x);
+      const n = str(o.name);
+      return n ? { name: n, description: str(o.description) ?? null } : null;
+    }),
+    kind: str(c.kind) ?? "builtin",
+    allowDuringTurn: c.allowDuringTurn === true,
+    confirm: c.confirm === true,
+  };
+}
+
+/** What a runtime command's result adds to its reply bubble. */
+export function describeCommandResult(e: Envelope): {
+  text?: string;
+  notice?: string;
+  error?: string;
+} {
+  const name = str(e.command) ?? "command";
+  switch (e.kind) {
+    case "text": {
+      const body = e.text ?? "";
+      if (!body.trim()) return { notice: `/${name} had nothing to show.` };
+      return { text: e.markdown ? body : "````text\n" + body + "\n````" };
+    }
+    case "completed":
+    case "info":
+      return { text: e.message || "Done." };
+    case "select": {
+      const rows = listOf(e.options, (o) => {
+        const opt = rec(o);
+        const option = str(opt.name);
+        if (!option) return null;
+        const about = str(opt.description);
+        return `- \`/${name} ${option}\`${about ? ` — ${about}` : ""}`;
+      });
+      return { text: [e.title || `Choose one for /${name}:`, "", ...rows].join("\n") };
+    }
+    case "turn":
+      return e.notice ? { notice: e.notice } : {};
+    case "error":
+      return { error: [e.error || `/${name} failed.`, e.url].filter(Boolean).join(" — ") };
+    default:
+      return {};
+  }
+}
+
+const statusOf = (err: unknown): number | undefined => (err as { status?: number }).status;
+
+const newRequestId = (): string =>
+  globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 function describeToolResult(data: Record<string, unknown>): string | undefined {
   const error = data.error;
   if (error != null) {
@@ -197,7 +275,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     } catch {
       /* No JSON body — the status line is the best description available. */
     }
-    throw new Error(detail);
+    throw Object.assign(new Error(detail), { status: response.status });
   }
   /* Several endpoints answer 202/204 with no body at all. Calling .json() on an
      empty body throws "Unexpected end of JSON input", which would surface as a
@@ -214,6 +292,8 @@ interface Turn {
   segStart: number;
   reasoning: string;
   settled: boolean;
+  /** Set when this turn is a runtime command; its events carry the same id. */
+  requestId?: string;
 }
 
 export function createCopilotClient(options: { baseUrl?: string } = {}): ChatClient {
@@ -227,6 +307,10 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
   let modelCache: ModelOption[] | null = null;
   let personaCache: Persona[] | null = null;
   let mcpCache: McpServer[] | null = null;
+  let commandCache: { session: string | null; list: RuntimeCommand[] } | null = null;
+  /* Plan reviews ride on the permission card; this remembers what "approve"
+     should pick for each one. */
+  const planActions = new Map<string, string | null>();
   let configLoad: Promise<ClientSettings> | null = null;
   let disposed = false;
 
@@ -360,9 +444,63 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
       case "dashboard.turn_start":
         return;
 
+      /* A command's turn ends only on the turn_end carrying its own request
+         id. A chat turn ignores turn_ends that belong to a command, or to a
+         scheduled prompt the runtime started by itself. */
       case "dashboard.turn_end":
-      case "session.idle":
+        if (event.external || (event.requestId ?? null) !== (turn?.requestId ?? null)) return;
         finish({ type: "done" });
+        return;
+
+      /* The agent going idle says nothing about a command, which can run
+         beside a reply or outlive the prompt it expanded into. */
+      case "session.idle":
+        if (turn?.requestId) return;
+        finish({ type: "done" });
+        return;
+
+      case "dashboard.command_result": {
+        if (!turn?.requestId || event.requestId !== turn.requestId) return;
+        const reply = describeCommandResult(event);
+        if (reply.error) {
+          finish({ type: "error", message: reply.error });
+          return;
+        }
+        if (reply.notice) emit({ type: "notice", message: reply.notice });
+        if (reply.text) {
+          turn.buf += reply.text;
+          turn.segStart = turn.buf.length;
+          emit({ type: "text", value: reply.text });
+        }
+        return;
+      }
+
+      case "dashboard.plan_review_requested": {
+        const reviewId = str(event.reviewId);
+        if (!reviewId) return;
+        const actions = strList(event.actions);
+        planActions.set(reviewId, str(event.recommendedAction) ?? actions[0] ?? null);
+        emit({
+          type: "permission",
+          request: {
+            id: `plan:${reviewId}`,
+            title: "Plan ready for review",
+            detail: [event.summary, event.planContent].filter(Boolean).join("\n\n") || undefined,
+            raw: JSON.stringify(
+              { actions, recommendedAction: event.recommendedAction ?? null },
+              null,
+              2,
+            ),
+          },
+        });
+        return;
+      }
+
+      case "dashboard.plan_review_resolved":
+        if (event.reviewId) {
+          planActions.delete(event.reviewId);
+          emit({ type: "permission-resolved", id: `plan:${event.reviewId}` });
+        }
         return;
 
       case "dashboard.aborted":
@@ -372,6 +510,7 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
 
       case "dashboard.error":
       case "session.error":
+        if (event.requestId && event.requestId !== turn?.requestId) return;
         finish({ type: "error", message: event.message ?? str(data.message) ?? "Unknown error" });
         return;
 
@@ -542,6 +681,36 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
 
   // ------------------------------------------------------------------ public
 
+  async function loadCommands(): Promise<RuntimeCommand[]> {
+    const key = sessionId;
+    if (commandCache && commandCache.session === key) return commandCache.list;
+    const url = key ? `${sessionsUrl}/${key}/commands` : `${base}/commands`;
+    const list = listOf(await request<unknown>(url), parseRuntimeCommand);
+    commandCache = { session: key, list };
+    return list;
+  }
+
+  /* The backend answers 428 for anything that hands the agent more autonomy
+     (/autopilot, /fleet, /every, an autopilot plan…). Asking the user here and
+     resending is the confirmation; declining sends nothing. */
+  async function postConfirmed(url: string, body: Record<string, unknown>): Promise<boolean> {
+    const post = (confirmed: boolean) =>
+      request<void>(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, confirmed }),
+      });
+    try {
+      await post(false);
+      return true;
+    } catch (err) {
+      if (statusOf(err) !== 428) throw err;
+      if (!window.confirm((err as Error).message)) return false;
+      await post(true);
+      return true;
+    }
+  }
+
   void loadConfig().catch((err: Error) =>
     set({ status: "offline", error: err.message }),
   );
@@ -676,6 +845,16 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
 
     async decide(requestId, decision: PermissionDecision) {
       if (!sessionId) return;
+      if (requestId.startsWith("plan:")) {
+        const reviewId = requestId.slice("plan:".length);
+        const approved = decision === "approve";
+        await postConfirmed(`${sessionsUrl}/${sessionId}/plan-reviews/${reviewId}`, {
+          approved,
+          action: approved ? (planActions.get(reviewId) ?? undefined) : undefined,
+          feedback: approved ? undefined : "The user declined this plan.",
+        });
+        return;
+      }
       await request<void>(`${sessionsUrl}/${sessionId}/permissions/${requestId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -686,15 +865,46 @@ export function createCopilotClient(options: { baseUrl?: string } = {}): ChatCli
       });
     },
 
+    async commands() {
+      try {
+        return await loadCommands();
+      } catch {
+        return [];
+      }
+    },
+
     send(opts: SendOptions, onDelta) {
       turn = { onDelta, buf: "", segStart: 0, reasoning: "", settled: false };
       const mine = turn;
       let cancelled = false;
+      const slash = /^\/(\S+)(?:\s+([\s\S]*))?$/.exec(opts.text.trim());
 
       void (async () => {
         try {
           const id = await ensureSession();
           if (cancelled) return;
+          /* "/name input" naming one of the runtime's commands runs it; any
+             other text, slash or not, is a message for the agent. */
+          const name = slash?.[1];
+          const command = name
+            ? (await loadCommands().catch((): RuntimeCommand[] => [])).find(
+                (c) => c.name === name || c.aliases.includes(name),
+              )
+            : undefined;
+          if (cancelled) return;
+          if (command) {
+            mine.requestId = newRequestId();
+            const ran = await postConfirmed(`${sessionsUrl}/${id}/commands`, {
+              requestId: mine.requestId,
+              name: command.name,
+              input: slash?.[2]?.trim() || undefined,
+            });
+            if (!ran && turn === mine) {
+              emit({ type: "notice", message: `/${command.name} was not run.` });
+              finish({ type: "done" });
+            }
+            return;
+          }
           await request<void>(`${sessionsUrl}/${id}/messages`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },

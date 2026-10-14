@@ -379,6 +379,11 @@ export function createMockClient(): ChatClient {
       release = null;
     },
 
+    /* The demo has no runtime behind it, so only Cortex's own commands exist. */
+    async commands() {
+      return [];
+    },
+
     send({ text }: SendOptions, onDelta: (d: Delta) => void) {
       let cancelled = false;
       const timers: number[] = [];

@@ -88,6 +88,25 @@ export interface SendOptions {
   history: Message[];
 }
 
+/* One of the Copilot runtime's own slash commands (/context, /review, /plan,
+   skills…), as the backend lists them. Cortex's native commands win any name
+   clash; the backend has already dropped the ones Cortex replaces. */
+export interface RuntimeCommand {
+  name: string;
+  aliases: string[];
+  description: string;
+  /** What the input looks like, e.g. "<interval> <prompt>"; null when it takes none. */
+  hint: string | null;
+  required: boolean;
+  choices: Array<{ name: string; description: string | null }>;
+  /** "builtin" or "skill". */
+  kind: string;
+  /** Safe to run while a reply is streaming. */
+  allowDuringTurn: boolean;
+  /** Asks the user before running: it hands the agent more autonomy. */
+  confirm: boolean;
+}
+
 export interface ModelOption {
   id: string;
   name: string;
@@ -276,9 +295,13 @@ export interface ChatClient {
   resume(sessionId: string): Promise<boolean>;
   /** Answers a pending permission request. */
   decide(requestId: string, decision: PermissionDecision): Promise<void>;
+  /** The runtime's own slash commands for the current (or a new) session. */
+  commands(): Promise<RuntimeCommand[]>;
   /**
    * Starts a reply. Calls `onDelta` repeatedly until it emits `done` or
-   * `error`. Returns a function that cancels the reply early.
+   * `error`. Returns a function that cancels the reply early. Text naming a
+   * runtime command ("/context", "/every 5m check the build") runs that
+   * command instead of being sent to the agent as a message.
    */
   send(opts: SendOptions, onDelta: (d: Delta) => void): () => void;
   /** Releases the SSE connection and any server-side session. */
