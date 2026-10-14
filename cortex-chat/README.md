@@ -1150,6 +1150,29 @@ on a disabled row does nothing and keeps the text, so a typo is corrected
 rather than retyped. Re-entering the folder already in use is refused too —
 it would restart the session to arrive where it already is.
 
+#### The runtime's own commands
+
+After Cortex's commands the palette lists the Copilot runtime's own —
+`/context`, `/review`, `/plan`, `/every`, `/compact`, your skills — read from
+`GET /api/sessions/{id}/commands` (or `/api/commands` before a chat exists). A
+native command wins a name clash, because it is the one wired to this UI's
+buttons. A command with fixed choices offers them as a second list; one that
+takes free input shows the hint and refuses Enter until a required value is
+typed.
+
+Choosing one sends `/name input` like a message. `copilotClient.send` sees
+that the name is a runtime command and posts it to the command endpoint
+instead of the agent, tagged with a `requestId`; only events carrying that id
+can end the reply. Text results render in the bubble (plain text fenced, so
+tables keep their columns), `select` results become a list of commands to run
+next, and a command that expands into a prompt streams the agent's reply as
+usual. Commands that hand the agent more autonomy come back `428` and ask
+before resending with `confirmed: true`. A plan review uses the same
+approve/reject card as a permission.
+
+Runtime commands are disabled while a reply streams, because `useChat` sends
+one thing at a time.
+
 ### 5.10 The quota — four honest shapes
 
 The card used to read `31k / 25k this month` over a full bar. Both numbers

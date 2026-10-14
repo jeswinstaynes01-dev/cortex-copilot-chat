@@ -206,6 +206,15 @@ node .\shot.mjs --live     # the same run against this backend on :8080
 | `POST` | `/api/sessions/{id}/messages` | Send a prompt — body `{prompt}`; returns `202` immediately |
 | `POST` | `/api/sessions/{id}/abort` | Stop the running turn; returns `204` |
 | `POST` | `/api/sessions/{id}/permissions/{requestId}` | Answer a permission — body `{decision, feedback}` |
+| `POST` | `/api/sessions/{id}/plan-reviews/{reviewId}` | Answer a plan review — body `{approved, action, feedback, confirmed}`; `204`, `410` if already resolved |
+| `GET` | `/api/commands` | The runtime's slash commands for a new chat (from a throwaway session, cached) |
+| `GET` | `/api/sessions/{id}/commands` | The runtime's slash commands for this session, skills included |
+| `POST` | `/api/sessions/{id}/commands` | Run one — body `{requestId, name, input, confirmed}`; `202`, `428` to confirm, `409` when busy |
+| `GET`/`POST` | `/api/sessions/{id}/agents`, `/agent` | List custom agents / select one |
+| `GET`/`POST` | `/api/sessions/{id}/rewind` | Rewind points / rewind to one |
+| `GET` | `/api/sessions/{id}/tasks`, `/instructions`, `/schedules` | Background tasks, instruction files, scheduled prompts |
+| `POST` | `/api/sessions/{id}/tasks/{taskId}/cancel`, `/schedules/{scheduleId}/stop` | Cancel a task / stop a schedule |
+| `GET` | `/api/version` | App, SDK, CLI and Java versions |
 | `GET` | `/api/history?limit=60` | Past conversations from the CLI's session store (read-only) |
 | `GET` | `/api/history/{id}` | The turns of one past conversation |
 | `GET` | `/api/usage` | Month-to-date premium usage. `source: "account"` is the real quota from GitHub, with `remainingPercent` and `resetDate`; `source: "estimate"` is a local sum against `monthly-premium-budget`. Always includes a per-model breakdown |
@@ -319,6 +328,20 @@ reads `premium_interactions` and caches the answer for 60 seconds. If the report
 not in the future, it uses the 1st of next month at 00:00 UTC, when GitHub resets premium
 counters. If the call fails (not signed in, or BYOK only), `/api/usage` falls back to the local
 estimate instead of erroring.
+
+### 8. The runtime's slash commands
+
+`CommandService` exposes the Copilot runtime's own commands (`/context`, `/review`, `/plan`,
+`/every`, skills…) through `session.commands.list` / `invoke`. A command runs as a turn: the
+stream carries `dashboard.turn_start`, one `dashboard.command_result`
+(`kind`: `text`, `completed`, `select`, `turn`, `error` or `info`) and `dashboard.turn_end`, all
+tagged with the caller's `requestId` so the browser can tell them from a chat reply. An
+`agent-prompt` result becomes a real agent turn whose reply streams as usual.
+
+`CommandPolicy` hides commands that only make sense in a terminal and makes the ones that give the
+agent more autonomy (`/autopilot`, `/fleet`, `/every`, `/after`, `/add-dir`, `/plugin`, `/share`,
+`/remote`, `/computer`) answer `428` until the request says `confirmed: true`. Plan reviews
+(`exit_plan_mode`) are forwarded as `dashboard.plan_review_requested` and wait for the browser.
 
 ---
 
